@@ -47,6 +47,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncCount, setLastSyncCount] = useState<number | null>(null);
   const [stravaBanner, setStravaBanner] = useState<'connected' | 'error' | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -80,6 +81,18 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, []);
+
+  const handleSignIn = async () => {
+    setAuthError(null);
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      const code = err instanceof Error && 'code' in err ? String((err as { code: unknown }).code) : 'unknown';
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('signInWithGoogle failed', err);
+      setAuthError(`${code}: ${message}`);
+    }
+  };
 
   const handleConnectStrava = () => {
     if (user) connectStrava(user.uid);
@@ -157,11 +170,14 @@ export default function App() {
           </h1>
           <p className="text-center text-slate-500 text-sm font-mono mb-8">Challenge Sail Québec 2027</p>
           <button
-            onClick={() => signInWithGoogle()}
+            onClick={handleSignIn}
             className="w-full bg-primary-600/20 border border-primary-400/50 text-primary-300 py-3 rounded-lg hover:bg-primary-600/30 hover:shadow-neon-cyan font-semibold transition-all"
           >
             Se connecter avec Google
           </button>
+          {authError && (
+            <p className="mt-4 text-xs text-sport-run font-mono text-center break-words">{authError}</p>
+          )}
         </div>
       </div>
     );

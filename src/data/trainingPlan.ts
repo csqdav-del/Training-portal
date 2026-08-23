@@ -206,6 +206,7 @@ function buildWeek(weekNumber: number): WeekPlan {
   const swimTotal = blockValue(weekNumber, SWIM_VOL);
   const swimFocus = blockText(weekNumber, SWIM_FOCUS);
   const runTotal = blockValue(weekNumber, RUN_VOL);
+  const runFocus = blockText(weekNumber, RUN_FOCUS);
   const runStructMid = blockText(weekNumber, RUN_STRUCT_MID);
   const runStructLong = blockText(weekNumber, RUN_STRUCT_LONG);
   const bikeTotal = blockValue(weekNumber, BIKE_VOL);
@@ -241,7 +242,7 @@ function buildWeek(weekNumber: number): WeekPlan {
     // Mercredi (2): course — séance qualité
     if (dayIndex === 2) {
       sessions.push(
-        makeSession('run', 'Course — Séance Qualité', [runStructMid], weekNumber >= 23 ? 'z4' : weekNumber >= 7 ? 'z3' : 'z2', runTotal * (runHasLong ? 0.4 : 0.5), 25 + weekNumber * 0.3),
+        makeSession('run', 'Course — ' + runFocus, [runStructMid], weekNumber >= 23 ? 'z4' : weekNumber >= 7 ? 'z3' : 'z2', runTotal * (runHasLong ? 0.4 : 0.5), 25 + weekNumber * 0.3),
       );
     }
 

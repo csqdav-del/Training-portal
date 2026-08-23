@@ -28,7 +28,7 @@ export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProp
   const sortedEntries = [...entries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const latestWeight = sortedEntries[0]?.weight;
   const startWeight = sortedEntries[sortedEntries.length - 1]?.weight;
-  const weightChange = startWeight && latestWeight ? (latestWeight - startWeight).toFixed(1) : 0;
+  const weightChange = startWeight && latestWeight ? (latestWeight - startWeight).toFixed(1) : '0';
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">

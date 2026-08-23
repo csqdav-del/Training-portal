@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Settings, LogOut, Menu, X } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
@@ -90,7 +90,7 @@ const TRAINING_ZONES: TrainingZones = {
 };
 
 export default function App() {
-  const [workouts, setWorkouts] = useState<Workout[]>(MOCK_WORKOUTS);
+  const [workouts] = useState<Workout[]>(MOCK_WORKOUTS);
   const [weights, setWeights] = useState<WeightEntry[]>(MOCK_WEIGHTS);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'weight' | 'vaping'>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

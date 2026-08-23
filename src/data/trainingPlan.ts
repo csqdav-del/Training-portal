@@ -1,4 +1,4 @@
-import { addDays, startOfWeek } from 'date-fns';
+import { addDays, endOfDay, startOfWeek } from 'date-fns';
 import type {
   DayPlan,
   Discipline,
@@ -201,7 +201,7 @@ function makeSession(
 function buildWeek(weekNumber: number): WeekPlan {
   const { phase, label, focus } = phaseOf(weekNumber);
   const startDate = addDays(PLAN_START, (weekNumber - 1) * 7);
-  const endDate = addDays(startDate, 6);
+  const endDate = endOfDay(addDays(startDate, 6));
 
   const swimTotal = blockValue(weekNumber, SWIM_VOL);
   const swimFocus = blockText(weekNumber, SWIM_FOCUS);

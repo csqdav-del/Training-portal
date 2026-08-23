@@ -26,7 +26,6 @@ const progressionData = TRAINING_PLAN.map((w) => ({
 
 export default function WorkoutDetail({ day, onClose }: WorkoutDetailProps) {
   const currentWeekNumber = TRAINING_PLAN.find((w) => day.date >= w.startDate && day.date <= w.endDate)?.weekNumber ?? 1;
-  const disciplinesInDay = Array.from(new Set(day.sessions.map((s) => s.discipline)));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
@@ -106,7 +105,7 @@ export default function WorkoutDetail({ day, onClose }: WorkoutDetailProps) {
         {/* Progression 12 mois */}
         <div className="bg-cyber-panel2 border border-cyber-line rounded-lg p-4">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">
-            Progression sur 48 semaines {disciplinesInDay.length > 0 && `— ${disciplinesInDay.map((d) => DISCIPLINE_META[d].label).join(' / ')}`}
+            Progression sur 48 semaines — toutes disciplines
           </h3>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={progressionData}>

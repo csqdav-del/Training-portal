@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { WeightEntry } from '../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { WEIGHT_GOAL_LBS, WEIGHT_START_LBS } from '../data/trainingPlan';
 
 interface WeightTrackerProps {
   entries: WeightEntry[];
@@ -27,68 +28,94 @@ export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProp
 
   const sortedEntries = [...entries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const latestWeight = sortedEntries[0]?.weight;
-  const startWeight = sortedEntries[sortedEntries.length - 1]?.weight;
-  const weightChange = startWeight && latestWeight ? (latestWeight - startWeight).toFixed(1) : '0';
+  const startWeight = sortedEntries[sortedEntries.length - 1]?.weight ?? WEIGHT_START_LBS;
+  const weightChange = latestWeight ? (latestWeight - startWeight).toFixed(1) : '0';
+  const toLose = latestWeight ? Math.max(0, latestWeight - WEIGHT_GOAL_LBS) : 0;
+  const progressPercent = latestWeight
+    ? Math.min(100, Math.max(0, ((WEIGHT_START_LBS - latestWeight) / (WEIGHT_START_LBS - WEIGHT_GOAL_LBS)) * 100))
+    : 0;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="glass-panel p-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Suivi du Poids</h2>
+          <h2 className="text-xl font-bold text-slate-100 uppercase tracking-wide">Suivi du Poids</h2>
           {latestWeight && (
             <div className="mt-2">
-              <div className="text-3xl font-bold text-gray-900">{latestWeight} kg</div>
-              <div className={`text-sm ${parseFloat(weightChange) < 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {parseFloat(weightChange) > 0 ? '+' : ''}{weightChange} kg
+              <div className="text-4xl font-bold text-primary-300 text-glow-cyan font-mono">
+                {latestWeight} <span className="text-lg text-slate-400">lbs</span>
+              </div>
+              <div className={`text-sm font-mono ${parseFloat(weightChange) < 0 ? 'text-sport-bike' : 'text-sport-run'}`}>
+                {parseFloat(weightChange) > 0 ? '+' : ''}
+                {weightChange} lbs depuis le début
               </div>
             </div>
           )}
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 flex items-center gap-2"
+          className="bg-primary-600/20 border border-primary-400/50 text-primary-300 px-4 py-2 rounded-lg hover:bg-primary-600/30 hover:shadow-neon-cyan flex items-center gap-2 font-medium self-start"
         >
           <Plus className="w-5 h-5" />
           Ajouter
         </button>
       </div>
 
+      {/* Goal progress */}
+      <div className="mb-6 bg-cyber-panel2 border border-cyber-line rounded-lg p-4">
+        <div className="flex justify-between text-sm mb-2 font-mono">
+          <span className="text-slate-400">Objectif race: {WEIGHT_GOAL_LBS} lbs</span>
+          <span className="text-primary-300">{toLose > 0 ? `${toLose.toFixed(1)} lbs restants` : 'Objectif atteint 🎯'}</span>
+        </div>
+        <div className="w-full bg-cyber-bg rounded-full h-2.5 border border-cyber-line overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-primary-500 to-sport-bike shadow-neon-cyan transition-all duration-500"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-xs text-slate-500 mt-1 font-mono">
+          <span>{WEIGHT_START_LBS} lbs</span>
+          <span>{progressPercent.toFixed(0)}%</span>
+          <span>{WEIGHT_GOAL_LBS} lbs</span>
+        </div>
+      </div>
+
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-gray-50 p-4 rounded-lg mb-6 border border-gray-200">
+        <form onSubmit={handleSubmit} className="bg-cyber-panel2 p-4 rounded-lg mb-6 border border-cyber-line">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Poids (kg)
+              <label className="block text-sm font-medium text-slate-400 mb-1">
+                Poids (lbs)
               </label>
               <input
                 type="number"
                 step="0.1"
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                placeholder="85.5"
+                className="w-full px-3 py-2 border border-cyber-line rounded-lg"
+                placeholder="288.5"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-400 mb-1">
                 Date
               </label>
               <input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-3 py-2 border border-cyber-line rounded-lg"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-400 mb-1">
                 Notes (opt.)
               </label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-3 py-2 border border-cyber-line rounded-lg"
                 placeholder="Matin, après gym..."
               />
             </div>
@@ -96,14 +123,14 @@ export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProp
           <div className="flex gap-2">
             <button
               type="submit"
-              className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 text-sm font-medium"
+              className="bg-primary-600/20 border border-primary-400/50 text-primary-300 px-4 py-2 rounded-lg hover:bg-primary-600/30 text-sm font-medium"
             >
               Enregistrer
             </button>
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="bg-gray-300 text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-400 text-sm font-medium"
+              className="bg-cyber-panel2 border border-cyber-line text-slate-300 px-4 py-2 rounded-lg hover:bg-cyber-line text-sm font-medium"
             >
               Annuler
             </button>
@@ -113,12 +140,12 @@ export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProp
 
       {/* Recent Entries */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Historique récent</h3>
+        <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wide">Historique récent</h3>
         {sortedEntries.slice(0, 5).map((entry) => (
-          <div key={entry.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+          <div key={entry.id} className="flex items-center justify-between p-2 bg-cyber-panel2 border border-cyber-line rounded">
             <div>
-              <div className="font-medium text-gray-900">{entry.weight} kg</div>
-              <div className="text-xs text-gray-500">
+              <div className="font-medium text-slate-100 font-mono">{entry.weight} lbs</div>
+              <div className="text-xs text-slate-500">
                 {format(new Date(entry.date), 'dd MMMM yyyy', { locale: fr })}
                 {entry.notes && ` • ${entry.notes}`}
               </div>

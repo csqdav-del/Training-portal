@@ -20,7 +20,7 @@ export interface WeightEntry {
   id: string;
   userId: string;
   date: Date;
-  weight: number; // kg
+  weight: number; // lbs
   notes?: string;
 }
 
@@ -61,4 +61,41 @@ export interface WeeklyStats {
   strengthSessions: number;
   totalCalories: number;
   totalWorkouts: number;
+}
+
+export type Discipline = 'swim' | 'bike' | 'run' | 'strength';
+export type ZoneKey = 'z1' | 'z2' | 'z3' | 'z4' | 'z5';
+export type Phase = 'Base' | 'Build' | 'Peak' | 'Taper';
+
+export interface PlannedSession {
+  discipline: Discipline;
+  title: string;
+  structure: string[];
+  targetZone: ZoneKey;
+  targetBpmMin: number;
+  targetBpmMax: number;
+  targetDistanceKm: number;
+  targetDurationMin: number;
+}
+
+export interface DayPlan {
+  dayIndex: number; // 0 = Lundi ... 6 = Dimanche
+  date: Date;
+  sessions: PlannedSession[];
+}
+
+export interface WeekPlan {
+  weekNumber: number;
+  phase: Phase;
+  phaseLabel: string;
+  focus: string;
+  startDate: Date;
+  endDate: Date;
+  days: DayPlan[];
+  volumeSummary: {
+    swimKm: number;
+    bikeKm: number;
+    runKm: number;
+    strengthSessions: number;
+  };
 }

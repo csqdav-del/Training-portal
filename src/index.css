@@ -6,18 +6,56 @@
   @apply transition-colors duration-200;
 }
 
-body {
-  @apply bg-slate-50 text-slate-900;
+html {
+  color-scheme: dark;
 }
 
-html.dark body {
-  @apply bg-slate-950 text-slate-100;
+body {
+  @apply bg-cyber-bg text-slate-200 font-body;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(168, 85, 247, 0.12), transparent),
+    linear-gradient(rgba(34, 211, 238, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
+  background-size: auto, 38px 38px, 38px 38px;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+h1, h2, h3, .font-display {
+  @apply font-display;
 }
 
 button {
-  @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-600;
+  @apply focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-400;
 }
 
 input, textarea, select {
-  @apply focus:outline-none focus:ring-2 focus:ring-primary-600;
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-400 bg-cyber-panel2 text-slate-100 border-cyber-line;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #050507;
+}
+::-webkit-scrollbar-thumb {
+  background: #20233a;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #22d3ee55;
+}
+
+.glass-panel {
+  @apply bg-cyber-panel/80 backdrop-blur border border-cyber-line rounded-lg;
+}
+
+.glow-border-cyan {
+  @apply border border-primary-400/30 hover:border-primary-400/70 hover:shadow-neon-cyan;
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
 }

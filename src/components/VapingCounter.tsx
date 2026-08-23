@@ -36,24 +36,24 @@ export default function VapingCounter({ startDate, onReset }: VapingCounterProps
   const lungImprovement = Math.min(100, Math.floor((daysCount / 30) * 5));
 
   return (
-    <div className="bg-gradient-to-br from-purple-600 to-purple-900 text-white rounded-lg p-8 shadow-lg">
+    <div className="glass-panel p-8 shadow-neon-purple border-sport-strength/30">
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold mb-2">Arrêt de la Vapoteuse 🎯</h2>
-        <p className="text-purple-100">Tu as commencé {new Date(startDate).toLocaleDateString('fr-FR')}</p>
+        <h2 className="text-3xl font-display font-bold text-sport-strength mb-2 uppercase tracking-wide">Arrêt de la Vapoteuse 🎯</h2>
+        <p className="text-slate-400 font-mono">Tu as commencé {new Date(startDate).toLocaleDateString('fr-FR')}</p>
       </div>
 
       {/* Main Counter */}
-      <div className="bg-white bg-opacity-10 backdrop-blur rounded-xl p-8 mb-8">
+      <div className="bg-cyber-panel2 border border-sport-strength/30 rounded-xl p-8 mb-8">
         <div className="text-center">
           <div className="flex justify-center items-baseline gap-4 mb-4">
             <div>
-              <div className="text-6xl font-bold text-white">{daysCount}</div>
-              <div className="text-purple-200 text-sm mt-2">Jours</div>
+              <div className="text-6xl font-bold text-sport-strength text-glow-cyan font-mono">{daysCount}</div>
+              <div className="text-slate-400 text-sm mt-2">Jours</div>
             </div>
-            <div className="text-4xl text-purple-200">•</div>
+            <div className="text-4xl text-slate-600">•</div>
             <div>
-              <div className="text-4xl font-bold text-purple-200">{hours}</div>
-              <div className="text-purple-200 text-sm mt-2">Heures</div>
+              <div className="text-4xl font-bold text-primary-300 font-mono">{hours}</div>
+              <div className="text-slate-400 text-sm mt-2">Heures</div>
             </div>
           </div>
         </div>
@@ -61,28 +61,28 @@ export default function VapingCounter({ startDate, onReset }: VapingCounterProps
 
       {/* Benefits */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white bg-opacity-10 rounded-lg p-4">
+        <div className="bg-cyber-panel2 border border-cyber-line rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Flame className="w-5 h-5 text-yellow-300" />
-            <span className="text-sm text-purple-200">Économies estimées</span>
+            <Flame className="w-5 h-5 text-amber-400" />
+            <span className="text-sm text-slate-400">Économies estimées</span>
           </div>
-          <div className="text-2xl font-bold text-white">${moneySaved}</div>
+          <div className="text-2xl font-bold text-slate-100 font-mono">${moneySaved}</div>
         </div>
 
-        <div className="bg-white bg-opacity-10 rounded-lg p-4">
+        <div className="bg-cyber-panel2 border border-cyber-line rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Heart className="w-5 h-5 text-red-300" />
-            <span className="text-sm text-purple-200">Santé pulmonaire</span>
+            <Heart className="w-5 h-5 text-sport-run" />
+            <span className="text-sm text-slate-400">Santé pulmonaire</span>
           </div>
-          <div className="text-2xl font-bold text-white">{lungImprovement}%</div>
+          <div className="text-2xl font-bold text-slate-100 font-mono">{lungImprovement}%</div>
         </div>
 
-        <div className="bg-white bg-opacity-10 rounded-lg p-4">
+        <div className="bg-cyber-panel2 border border-cyber-line rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xl">🏃</span>
-            <span className="text-sm text-purple-200">Entraînement boost</span>
+            <span className="text-sm text-slate-400">Entraînement boost</span>
           </div>
-          <div className="text-2xl font-bold text-white">+{Math.min(50, daysCount * 2)}%</div>
+          <div className="text-2xl font-bold text-slate-100 font-mono">+{Math.min(50, daysCount * 2)}%</div>
         </div>
       </div>
 
@@ -91,7 +91,7 @@ export default function VapingCounter({ startDate, onReset }: VapingCounterProps
         <div className="flex justify-center">
           <button
             onClick={onReset}
-            className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+            className="bg-sport-run/20 border border-sport-run/50 text-sport-run hover:bg-sport-run/30 px-6 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             Réinitialiser le compteur
           </button>
@@ -99,8 +99,8 @@ export default function VapingCounter({ startDate, onReset }: VapingCounterProps
       )}
 
       {/* Motivational message */}
-      <div className="mt-8 p-4 bg-white bg-opacity-10 rounded-lg border border-purple-400 border-opacity-30">
-        <p className="text-center text-purple-100 text-sm">
+      <div className="mt-8 p-4 bg-cyber-panel2 rounded-lg border border-sport-strength/30">
+        <p className="text-center text-slate-300 text-sm">
           {daysCount === 0
             ? "C'est le premier jour ! Tu vas le faire 💪"
             : daysCount < 7

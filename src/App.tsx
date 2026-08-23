@@ -4,7 +4,8 @@ import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
 import WeightTracker from './components/WeightTracker';
 import VapingCounter from './components/VapingCounter';
-import { Workout, WeightEntry, TrainingZones, WeeklyStats } from './types';
+import { Workout, WeightEntry, WeeklyStats } from './types';
+import { HR_ZONES, WEIGHT_START_LBS } from './data/trainingPlan';
 
 // Mock data for development
 const MOCK_WORKOUTS: Workout[] = [
@@ -61,33 +62,24 @@ const MOCK_WEIGHTS: WeightEntry[] = [
     id: '1',
     userId: 'user1',
     date: new Date(),
-    weight: 87.5,
+    weight: 289.5,
     notes: 'Matin',
   },
   {
     id: '2',
     userId: 'user1',
-    date: new Date(new Date().setDate(new Date().getDate() - 1)),
-    weight: 87.8,
+    date: new Date(new Date().setDate(new Date().getDate() - 3)),
+    weight: WEIGHT_START_LBS,
     notes: 'Matin',
   },
   {
     id: '3',
     userId: 'user1',
-    date: new Date(new Date().setDate(new Date().getDate() - 2)),
-    weight: 88.2,
+    date: new Date(new Date().setDate(new Date().getDate() - 7)),
+    weight: 291,
     notes: 'Matin',
   },
 ];
-
-// Training zones for age 28, FC max ~192
-const TRAINING_ZONES: TrainingZones = {
-  z1: { min: 105, max: 134, label: 'Z1 - Récupération' },
-  z2: { min: 135, max: 154, label: 'Z2 - Endurance' },
-  z3: { min: 155, max: 167, label: 'Z3 - Tempo' },
-  z4: { min: 168, max: 181, label: 'Z4 - Seuil' },
-  z5: { min: 182, max: 192, label: 'Z5 - VO2 Max' },
-};
 
 export default function App() {
   const [workouts] = useState<Workout[]>(MOCK_WORKOUTS);
@@ -149,12 +141,17 @@ export default function App() {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-600 to-primary-900 flex items-center justify-center">
-        <div className="bg-white rounded-lg p-8 shadow-2xl max-w-md w-full">
-          <h1 className="text-3xl font-bold text-gray-900 mb-6 text-center">Training Portal</h1>
+      <div className="min-h-screen bg-cyber-bg flex items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 bg-cyber-grid bg-grid opacity-40" />
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-900/30 via-transparent to-sport-strength/10" />
+        <div className="glass-panel p-8 shadow-neon-cyan max-w-md w-full relative z-10 mx-4">
+          <h1 className="text-3xl font-display font-bold text-primary-300 text-glow-cyan mb-2 text-center uppercase tracking-widest">
+            Training Portal
+          </h1>
+          <p className="text-center text-slate-500 text-sm font-mono mb-8">Challenge Sail Québec 2027</p>
           <button
             onClick={() => setIsLoggedIn(true)}
-            className="w-full bg-primary-600 text-white py-3 rounded-lg hover:bg-primary-700 font-semibold"
+            className="w-full bg-primary-600/20 border border-primary-400/50 text-primary-300 py-3 rounded-lg hover:bg-primary-600/30 hover:shadow-neon-cyan font-semibold transition-all"
           >
             Se connecter avec Google
           </button>
@@ -164,38 +161,38 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <header className="bg-cyber-panel/90 backdrop-blur border-b border-cyber-line sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-600 to-primary-900 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-sport-strength rounded-lg flex items-center justify-center shadow-neon-cyan">
                 <span className="text-white text-xl">🏊</span>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Training Portal</h1>
-                <p className="text-xs text-gray-500">Triathlon Olympique 2027</p>
+                <h1 className="text-2xl font-display font-bold text-slate-100 uppercase tracking-wide">Training Portal</h1>
+                <p className="text-xs text-primary-400 font-mono">Triathlon Olympique 2027</p>
               </div>
             </div>
 
             {/* Desktop Menu */}
             <div className="hidden md:flex items-center gap-6">
-              <button className="p-2 hover:bg-gray-100 rounded-lg">
-                <Settings className="w-5 h-5 text-gray-600" />
+              <button className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-primary-300">
+                <Settings className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setIsLoggedIn(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-sport-run"
               >
-                <LogOut className="w-5 h-5 text-gray-600" />
+                <LogOut className="w-5 h-5" />
               </button>
             </div>
 
             {/* Mobile Menu Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
+              className="md:hidden p-2 hover:bg-cyber-panel2 rounded-lg text-slate-300"
             >
               {mobileMenuOpen ? (
                 <X className="w-5 h-5" />
@@ -208,7 +205,7 @@ export default function App() {
       </header>
 
       {/* Tab Navigation */}
-      <div className="bg-white border-b border-gray-200 sticky top-16 z-30">
+      <div className="bg-cyber-panel/80 backdrop-blur border-b border-cyber-line sticky top-[73px] z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className={`flex gap-1 overflow-x-auto ${mobileMenuOpen ? 'flex-col' : ''}`}>
             {tabs.map(tab => (
@@ -220,8 +217,8 @@ export default function App() {
                 }}
                 className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
-                    ? 'border-primary-600 text-primary-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                    ? 'border-primary-400 text-primary-300 text-glow-cyan'
+                    : 'border-transparent text-slate-500 hover:text-slate-200'
                 }`}
               >
                 {tab.label}
@@ -234,7 +231,7 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && (
-          <Dashboard weeklyStats={weeklyStats} zones={TRAINING_ZONES} weightData={weightData} />
+          <Dashboard weeklyStats={weeklyStats} zones={HR_ZONES} weightData={weightData} />
         )}
 
         {activeTab === 'calendar' && (
@@ -254,9 +251,9 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 mt-12 bg-white">
+      <footer className="border-t border-cyber-line mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center text-sm text-gray-600">
+          <div className="text-center text-sm text-slate-600 font-mono">
             <p>Training Portal • Sync: Strava + Samsung Health • Challenge Sail Quebec 2027</p>
           </div>
         </div>

@@ -30,21 +30,22 @@ export default function WorkoutDetail({ day, onClose }: WorkoutDetailProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="glass-panel w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 shadow-neon-cyan"
+        className="glass-panel w-full max-w-3xl max-h-[90vh] flex flex-col shadow-neon-cyan"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between p-6 pb-4 border-b border-cyber-line shrink-0">
           <div>
             <h2 className="text-2xl font-bold text-slate-100 uppercase tracking-wide">
               {format(day.date, 'EEEE d MMMM', { locale: fr })}
             </h2>
             <p className="text-sm text-slate-500 font-mono">Semaine {currentWeekNumber} du plan</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-primary-300">
+          <button onClick={onClose} className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-primary-300 shrink-0">
             <X className="w-6 h-6" />
           </button>
         </div>
 
+        <div className="overflow-y-auto p-6 pt-4 min-h-0">
         {day.sessions.length === 0 ? (
           <div className="text-center py-12 text-slate-500 font-mono">Repos — aucune séance planifiée</div>
         ) : (
@@ -120,6 +121,7 @@ export default function WorkoutDetail({ day, onClose }: WorkoutDetailProps) {
               <Line type="monotone" dataKey="Course" stroke="#ff2fd6" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
+        </div>
         </div>
       </div>
     </div>

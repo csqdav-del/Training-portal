@@ -17,6 +17,8 @@ const DISCIPLINE_STYLE: Record<Discipline, string> = {
   bike: 'bg-sport-bike/15 text-sport-bike border-sport-bike/40',
   run: 'bg-sport-run/15 text-sport-run border-sport-run/40',
   strength: 'bg-sport-strength/15 text-sport-strength border-sport-strength/40',
+  walk: 'bg-amber-400/15 text-amber-300 border-amber-400/40',
+  other: 'bg-slate-400/15 text-slate-300 border-slate-400/40',
 };
 
 const DISCIPLINE_ICON: Record<Discipline, string> = {
@@ -24,6 +26,8 @@ const DISCIPLINE_ICON: Record<Discipline, string> = {
   bike: '🚴',
   run: '🏃',
   strength: '💪',
+  walk: '🚶',
+  other: '⚡',
 };
 
 export default function Calendar({ workouts }: CalendarProps) {

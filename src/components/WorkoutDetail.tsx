@@ -2,7 +2,7 @@ import { X, Target, Heart, Ruler, Clock } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { DayPlan, Discipline } from '../types';
+import { DayPlan, PlanDiscipline } from '../types';
 import { TRAINING_PLAN } from '../data/trainingPlan';
 
 interface WorkoutDetailProps {
@@ -10,7 +10,7 @@ interface WorkoutDetailProps {
   onClose: () => void;
 }
 
-const DISCIPLINE_META: Record<Discipline, { label: string; color: string; glow: string; icon: string }> = {
+const DISCIPLINE_META: Record<PlanDiscipline, { label: string; color: string; glow: string; icon: string }> = {
   swim: { label: 'Natation', color: 'text-sport-swim', glow: 'shadow-neon-cyan border-sport-swim/50', icon: '🏊' },
   bike: { label: 'Vélo', color: 'text-sport-bike', glow: 'shadow-neon-green border-sport-bike/50', icon: '🚴' },
   run: { label: 'Course', color: 'text-sport-run', glow: 'shadow-neon-pink border-sport-run/50', icon: '🏃' },

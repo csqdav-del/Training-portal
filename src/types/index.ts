@@ -2,7 +2,7 @@ export interface Workout {
   id: string;
   userId: string;
   date: Date;
-  type: 'swim' | 'bike' | 'run' | 'strength';
+  type: Discipline;
   duration: number; // minutes
   distance?: number; // km
   calories?: number;
@@ -63,12 +63,13 @@ export interface WeeklyStats {
   totalWorkouts: number;
 }
 
-export type Discipline = 'swim' | 'bike' | 'run' | 'strength';
+export type Discipline = 'swim' | 'bike' | 'run' | 'strength' | 'walk' | 'other';
+export type PlanDiscipline = 'swim' | 'bike' | 'run' | 'strength';
 export type ZoneKey = 'z1' | 'z2' | 'z3' | 'z4' | 'z5';
 export type Phase = 'Base' | 'Build' | 'Peak' | 'Taper';
 
 export interface PlannedSession {
-  discipline: Discipline;
+  discipline: PlanDiscipline;
   title: string;
   structure: string[];
   targetZone: ZoneKey;

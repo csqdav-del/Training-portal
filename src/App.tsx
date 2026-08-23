@@ -1,61 +1,16 @@
-import { useState } from 'react';
-import { Settings, LogOut, Menu, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { startOfWeek, endOfWeek } from 'date-fns';
+import { Settings, LogOut, Menu, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
 import WeightTracker from './components/WeightTracker';
 import VapingCounter from './components/VapingCounter';
 import { Workout, WeightEntry, WeeklyStats } from './types';
 import { HR_ZONES, WEIGHT_START_LBS } from './data/trainingPlan';
-
-// Mock data for development
-const MOCK_WORKOUTS: Workout[] = [
-  {
-    id: '1',
-    userId: 'user1',
-    date: new Date(new Date().setDate(new Date().getDate() - 1)),
-    type: 'swim',
-    duration: 45,
-    distance: 1.2,
-    calories: 450,
-    heartRate: { avg: 140, max: 160 },
-    source: 'health_connect',
-    syncedAt: new Date(),
-  },
-  {
-    id: '2',
-    userId: 'user1',
-    date: new Date(new Date().setDate(new Date().getDate() - 2)),
-    type: 'bike',
-    duration: 90,
-    distance: 35,
-    calories: 800,
-    heartRate: { avg: 145, max: 170 },
-    source: 'strava',
-    syncedAt: new Date(),
-  },
-  {
-    id: '3',
-    userId: 'user1',
-    date: new Date(new Date().setDate(new Date().getDate() - 3)),
-    type: 'run',
-    duration: 35,
-    distance: 5.2,
-    calories: 520,
-    heartRate: { avg: 155, max: 175 },
-    source: 'health_connect',
-    syncedAt: new Date(),
-  },
-  {
-    id: '4',
-    userId: 'user1',
-    date: new Date(),
-    type: 'strength',
-    duration: 60,
-    calories: 350,
-    source: 'manual',
-    syncedAt: new Date(),
-  },
-];
+import { auth, signInWithGoogle, signOutUser } from './firebase';
+import { subscribeToWorkouts } from './lib/firestoreWorkouts';
+import { connectStrava, syncStrava, subscribeToStravaStatus } from './lib/strava';
 
 const MOCK_WEIGHTS: WeightEntry[] = [
   {
@@ -82,35 +37,79 @@ const MOCK_WEIGHTS: WeightEntry[] = [
 ];
 
 export default function App() {
-  const [workouts] = useState<Workout[]>(MOCK_WORKOUTS);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [weights, setWeights] = useState<WeightEntry[]>(MOCK_WEIGHTS);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'weight' | 'vaping'>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [stravaConnected, setStravaConnected] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncCount, setLastSyncCount] = useState<number | null>(null);
+  const [stravaBanner, setStravaBanner] = useState<'connected' | 'error' | null>(null);
 
-  // Calculate weekly stats
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setWorkouts([]);
+      setStravaConnected(false);
+      return;
+    }
+    const unsubWorkouts = subscribeToWorkouts(user.uid, setWorkouts);
+    const unsubStrava = subscribeToStravaStatus(user.uid, setStravaConnected);
+    return () => {
+      unsubWorkouts();
+      unsubStrava();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const strava = params.get('strava');
+    if (strava === 'connected' || strava === 'error') {
+      setStravaBanner(strava);
+      window.history.replaceState({}, '', window.location.pathname);
+      const timer = setTimeout(() => setStravaBanner(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleConnectStrava = () => {
+    if (user) connectStrava(user.uid);
+  };
+
+  const handleSyncStrava = async () => {
+    setSyncing(true);
+    const result = await syncStrava();
+    setSyncing(false);
+    if ('synced' in result) setLastSyncCount(result.synced);
+  };
+
+  // Stats de la semaine en cours (lundi-dimanche)
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+  const thisWeekWorkouts = workouts.filter((w) => {
+    const d = new Date(w.date);
+    return d >= weekStart && d <= weekEnd;
+  });
+
   const weeklyStats: WeeklyStats = {
-    swimDistance: workouts
-      .filter(w => w.type === 'swim')
-      .reduce((sum, w) => sum + (w.distance || 0), 0),
-    swimDuration: workouts
-      .filter(w => w.type === 'swim')
-      .reduce((sum, w) => sum + w.duration, 0),
-    bikeDistance: workouts
-      .filter(w => w.type === 'bike')
-      .reduce((sum, w) => sum + (w.distance || 0), 0),
-    bikeDuration: workouts
-      .filter(w => w.type === 'bike')
-      .reduce((sum, w) => sum + w.duration, 0),
-    runDistance: workouts
-      .filter(w => w.type === 'run')
-      .reduce((sum, w) => sum + (w.distance || 0), 0),
-    runDuration: workouts
-      .filter(w => w.type === 'run')
-      .reduce((sum, w) => sum + w.duration, 0),
-    strengthSessions: workouts.filter(w => w.type === 'strength').length,
-    totalCalories: workouts.reduce((sum, w) => sum + (w.calories || 0), 0),
-    totalWorkouts: workouts.length,
+    swimDistance: thisWeekWorkouts.filter((w) => w.type === 'swim').reduce((sum, w) => sum + (w.distance || 0), 0),
+    swimDuration: thisWeekWorkouts.filter((w) => w.type === 'swim').reduce((sum, w) => sum + w.duration, 0),
+    bikeDistance: thisWeekWorkouts.filter((w) => w.type === 'bike').reduce((sum, w) => sum + (w.distance || 0), 0),
+    bikeDuration: thisWeekWorkouts.filter((w) => w.type === 'bike').reduce((sum, w) => sum + w.duration, 0),
+    runDistance: thisWeekWorkouts.filter((w) => w.type === 'run').reduce((sum, w) => sum + (w.distance || 0), 0),
+    runDuration: thisWeekWorkouts.filter((w) => w.type === 'run').reduce((sum, w) => sum + w.duration, 0),
+    strengthSessions: thisWeekWorkouts.filter((w) => w.type === 'strength').length,
+    totalCalories: thisWeekWorkouts.reduce((sum, w) => sum + (w.calories || 0), 0),
+    totalWorkouts: thisWeekWorkouts.length,
   };
 
   // Weight data for chart
@@ -139,7 +138,15 @@ export default function App() {
     { id: 'vaping', label: '🎯 Arrêt Vape' },
   ] as const;
 
-  if (!isLoggedIn) {
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-cyber-bg flex items-center justify-center">
+        <p className="text-primary-300 font-mono animate-pulse">Chargement...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
     return (
       <div className="min-h-screen bg-cyber-bg flex items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 bg-cyber-grid bg-grid opacity-40" />
@@ -150,7 +157,7 @@ export default function App() {
           </h1>
           <p className="text-center text-slate-500 text-sm font-mono mb-8">Challenge Sail Québec 2027</p>
           <button
-            onClick={() => setIsLoggedIn(true)}
+            onClick={() => signInWithGoogle()}
             className="w-full bg-primary-600/20 border border-primary-400/50 text-primary-300 py-3 rounded-lg hover:bg-primary-600/30 hover:shadow-neon-cyan font-semibold transition-all"
           >
             Se connecter avec Google
@@ -162,6 +169,27 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
+      {/* Strava banner */}
+      {stravaBanner && (
+        <div
+          className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg border shadow-lg font-mono text-sm ${
+            stravaBanner === 'connected'
+              ? 'bg-cyber-panel border-sport-bike/50 text-sport-bike'
+              : 'bg-cyber-panel border-sport-run/50 text-sport-run'
+          }`}
+        >
+          {stravaBanner === 'connected' ? (
+            <>
+              <CheckCircle2 className="w-4 h-4" /> Strava connecté avec succès
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="w-4 h-4" /> Échec de la connexion Strava
+            </>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-cyber-panel/90 backdrop-blur border-b border-cyber-line sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -178,11 +206,14 @@ export default function App() {
 
             {/* Desktop Menu */}
             <div className="hidden md:flex items-center gap-6">
+              {user.photoURL && (
+                <img src={user.photoURL} alt={user.displayName ?? 'Profil'} className="w-8 h-8 rounded-full border border-primary-400/50" />
+              )}
               <button className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-primary-300">
                 <Settings className="w-5 h-5" />
               </button>
               <button
-                onClick={() => setIsLoggedIn(false)}
+                onClick={() => signOutUser()}
                 className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-sport-run"
               >
                 <LogOut className="w-5 h-5" />
@@ -231,7 +262,17 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && (
-          <Dashboard weeklyStats={weeklyStats} zones={HR_ZONES} weightData={weightData} />
+          <Dashboard
+            weeklyStats={weeklyStats}
+            zones={HR_ZONES}
+            weightData={weightData}
+            workouts={workouts}
+            stravaConnected={stravaConnected}
+            syncing={syncing}
+            lastSyncCount={lastSyncCount}
+            onConnectStrava={handleConnectStrava}
+            onSyncStrava={handleSyncStrava}
+          />
         )}
 
         {activeTab === 'calendar' && (

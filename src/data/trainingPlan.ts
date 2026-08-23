@@ -1,8 +1,8 @@
 import { addDays, endOfDay, startOfWeek } from 'date-fns';
 import type {
   DayPlan,
-  Discipline,
   Phase,
+  PlanDiscipline,
   PlannedSession,
   TrainingZones,
   WeekPlan,
@@ -32,7 +32,7 @@ export const HR_ZONES: TrainingZones = {
   z5: { min: 167, max: 192, label: 'Z5 - VO2 Max' },
 };
 
-export const RACE_TARGETS: Record<Discipline, { current: number; target: number; unit: string; paceTarget: string }> = {
+export const RACE_TARGETS: Record<PlanDiscipline, { current: number; target: number; unit: string; paceTarget: string }> = {
   swim: { current: 1.3, target: 1.5, unit: 'km', paceTarget: '2:30-2:45/100m' },
   bike: { current: 23.7, target: 40, unit: 'km', paceTarget: '24-26 km/h' },
   run: { current: 3.22, target: 10, unit: 'km', paceTarget: '6:10/km (aspirationnel)' },
@@ -178,7 +178,7 @@ const BIKE_FOCUS = [
 const FORCE_FREQ = (week: number) => (week <= 45 ? 2 : week <= 47 ? 1 : 0);
 
 function makeSession(
-  discipline: Discipline,
+  discipline: PlanDiscipline,
   title: string,
   structure: string[],
   zone: ZoneKey,
@@ -312,7 +312,7 @@ export function daysUntilRace(from: Date = new Date()): number {
   return Math.max(0, Math.ceil((RACE.date.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
-export function readiness(discipline: Discipline): number {
+export function readiness(discipline: PlanDiscipline): number {
   const t = RACE_TARGETS[discipline];
   if (t.target === 0) return 100;
   return Math.min(100, Math.round((t.current / t.target) * 100));

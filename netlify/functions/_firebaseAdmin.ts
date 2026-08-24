@@ -10,7 +10,14 @@ function getAdminApp() {
   const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim().replace(/^"(.*)"$/, '$1');
 
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY?.trim();
+  // Prefer the base64-encoded key: a single unbroken line of safe characters
+  // survives copy/paste through a web UI far more reliably than a raw
+  // multi-line PEM (dashes, newlines, spaces are all easy to mangle by hand).
+  const b64Key = process.env.FIREBASE_PRIVATE_KEY_B64?.trim();
+  let privateKey = b64Key
+    ? Buffer.from(b64Key, 'base64').toString('utf8')
+    : process.env.FIREBASE_PRIVATE_KEY?.trim();
+
   if (privateKey) {
     // Strip accidental wrapping quotes (common when copy-pasting from the JSON file)
     privateKey = privateKey.replace(/^"(.*)"$/s, '$1');

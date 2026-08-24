@@ -131,8 +131,42 @@ export default function WorkoutDetail({ day, workouts, onClose }: WorkoutDetailP
                           <span className="text-slate-500">Calories: </span>
                           {actual.calories ?? '—'}
                         </div>
+                        {actual.elevationGain != null && (
+                          <div className="text-sm font-mono text-slate-300">
+                            <span className="text-slate-500">D+: </span>
+                            {actual.elevationGain} m
+                          </div>
+                        )}
+                        {actual.avgSpeed != null && (
+                          <div className="text-sm font-mono text-slate-300">
+                            <span className="text-slate-500">Vitesse moy: </span>
+                            {actual.avgSpeed} km/h
+                          </div>
+                        )}
+                        {actual.avgWatts != null && (
+                          <div className="text-sm font-mono text-slate-300">
+                            <span className="text-slate-500">Puissance: </span>
+                            {actual.avgWatts} W
+                          </div>
+                        )}
+                        {actual.elapsedTime != null && (
+                          <div className="text-sm font-mono text-slate-300">
+                            <span className="text-slate-500">Temps total: </span>
+                            {actual.elapsedTime} min
+                          </div>
+                        )}
                       </div>
                       {actual.notes && <div className="text-xs text-slate-500 mt-2 italic">"{actual.notes}"</div>}
+                      {actual.stravaUrl && (
+                        <a
+                          href={actual.stravaUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-block text-xs text-orange-400 hover:text-orange-300 font-mono mt-2"
+                        >
+                          Voir sur Strava ↗
+                        </a>
+                      )}
                     </div>
                   )}
                 </div>

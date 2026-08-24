@@ -77,6 +77,29 @@ export default async (req: Request) => {
   }
 
   const activities: any[] = await actRes.json();
+
+  // Nom du vélo / des chaussures : un appel par gear_id unique (cache local à la requête)
+  const gearNames = new Map<string, string | null>();
+  const gearIds = [...new Set(activities.map((a) => a.gear_id).filter(Boolean))] as string[];
+  for (const gearId of gearIds) {
+    try {
+      const gearRes = await fetch(`https://www.strava.com/api/v3/gear/${gearId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      gearNames.set(gearId, gearRes.ok ? (await gearRes.json()).name ?? null : null);
+    } catch {
+      gearNames.set(gearId, null);
+    }
+  }
+
+  const round = (v: unknown, decimals = 0): number | null => {
+    if (typeof v !== 'number' || Number.isNaN(v)) return null;
+    const f = 10 ** decimals;
+    return Math.round(v * f) / f;
+  };
+  const kmh = (metersPerSec: unknown) =>
+    typeof metersPerSec === 'number' ? Math.round(metersPerSec * 3.6 * 10) / 10 : null;
+
   const batch = db.batch();
   let count = 0;
 
@@ -100,6 +123,30 @@ export default async (req: Request) => {
         source: 'strava',
         externalId: String(a.id),
         syncedAt: new Date().toISOString(),
+        // --- Détails enrichis ---
+        sportType: a.sport_type || a.type || null,
+        elapsedTime: a.elapsed_time ? Math.round(a.elapsed_time / 60) : null,
+        elevationGain: round(a.total_elevation_gain),
+        elevationMax: round(a.elev_high),
+        avgSpeed: kmh(a.average_speed),
+        maxSpeed: kmh(a.max_speed),
+        avgWatts: round(a.average_watts),
+        maxWatts: round(a.max_watts),
+        weightedWatts: round(a.weighted_average_watts),
+        kilojoules: round(a.kilojoules),
+        deviceWatts: typeof a.device_watts === 'boolean' ? a.device_watts : null,
+        avgCadence: round(a.average_cadence, 1),
+        sufferScore: round(a.suffer_score),
+        prCount: a.pr_count ?? null,
+        achievementCount: a.achievement_count ?? null,
+        kudosCount: a.kudos_count ?? null,
+        photoCount: a.total_photo_count ?? null,
+        gearName: a.gear_id ? gearNames.get(a.gear_id) ?? null : null,
+        deviceName: a.device_name ?? null,
+        locationCity: a.location_city ?? null,
+        locationState: a.location_state ?? null,
+        polyline: a.map?.summary_polyline ?? null,
+        stravaUrl: `https://www.strava.com/activities/${a.id}`,
       },
       { merge: true },
     );

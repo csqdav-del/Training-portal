@@ -14,6 +14,30 @@ export interface Workout {
   source: 'strava' | 'health_connect' | 'manual';
   externalId?: string;
   syncedAt: Date;
+  // --- Détails enrichis (Strava) ---
+  sportType?: string;
+  elapsedTime?: number; // minutes, arrêts inclus
+  elevationGain?: number; // m
+  elevationMax?: number; // m
+  avgSpeed?: number; // km/h
+  maxSpeed?: number; // km/h
+  avgWatts?: number;
+  maxWatts?: number;
+  weightedWatts?: number; // normalized power
+  kilojoules?: number;
+  deviceWatts?: boolean; // true = capteur de puissance, false = estimation
+  avgCadence?: number;
+  sufferScore?: number;
+  prCount?: number;
+  achievementCount?: number;
+  kudosCount?: number;
+  photoCount?: number;
+  gearName?: string;
+  deviceName?: string;
+  locationCity?: string;
+  locationState?: string;
+  polyline?: string; // tracé encodé (map.summary_polyline)
+  stravaUrl?: string;
 }
 
 export interface WeightEntry {

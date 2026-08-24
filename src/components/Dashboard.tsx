@@ -5,6 +5,7 @@ import { WeeklyStats, TrainingZones, PlanDiscipline, Discipline, Workout } from 
 import { RACE, RACE_TARGETS, daysUntilRace, readiness, getWeekForDate, getDayPlan } from '../data/trainingPlan';
 import { addManualWorkout } from '../lib/manualWorkout';
 import WorkoutDetail from './WorkoutDetail';
+import ActivityDetail from './ActivityDetail';
 
 interface DashboardProps {
   uid: string;
@@ -48,6 +49,7 @@ export default function Dashboard({
   onSyncStrava,
 }: DashboardProps) {
   const [showToday, setShowToday] = useState(false);
+  const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualType, setManualType] = useState<Discipline>('swim');
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
@@ -380,7 +382,11 @@ export default function Dashboard({
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 .slice(0, 5)
                 .map((w) => (
-                  <div key={w.id} className="flex items-center justify-between bg-cyber-panel2 border border-cyber-line rounded-lg px-3 py-2">
+                  <button
+                    key={w.id}
+                    onClick={() => setSelectedWorkout(w)}
+                    className="w-full text-left flex items-center justify-between bg-cyber-panel2 border border-cyber-line rounded-lg px-3 py-2 hover:border-primary-400/50 transition-colors"
+                  >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-lg shrink-0">{ACTIVITY_ICON[w.type]}</span>
                       <div className="min-w-0">
@@ -388,11 +394,13 @@ export default function Dashboard({
                         <div className="text-xs text-slate-500 font-mono">
                           {new Date(w.date).toLocaleDateString('fr-FR')} · {w.distance ? `${w.distance}km · ` : ''}
                           {w.duration}min
+                          {w.elevationGain ? ` · ${w.elevationGain}m D+` : ''}
+                          {w.avgWatts ? ` · ${w.avgWatts}W` : ''}
                         </div>
                       </div>
                     </div>
                     {w.source === 'strava' && <span className="text-xs text-orange-400 font-mono shrink-0">Strava</span>}
-                  </div>
+                  </button>
                 ))}
             </div>
           )}
@@ -416,6 +424,7 @@ export default function Dashboard({
       </div>
 
       {showToday && todayPlan && <WorkoutDetail day={todayPlan} workouts={workouts} onClose={() => setShowToday(false)} />}
+      {selectedWorkout && <ActivityDetail workout={selectedWorkout} onClose={() => setSelectedWorkout(null)} />}
     </div>
   );
 }

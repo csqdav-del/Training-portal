@@ -15,6 +15,17 @@ function getAdminApp() {
     privateKey = privateKey.replace(/^"(.*)"$/s, '$1');
     // Turn literal "\n" sequences into real newlines (harmless if already real newlines)
     privateKey = privateKey.replace(/\\n/g, '\n');
+    // Normalize Windows line endings (Notepad copy/paste) - OpenSSL's PEM decoder
+    // can reject "\r\n" line endings inside the base64 body with a cryptic
+    // "DECODER routines::unsupported" error.
+    privateKey = privateKey.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    // Trim each line and drop any accidental blank lines (not valid inside a PEM body)
+    privateKey = privateKey
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join('\n');
+    privateKey += '\n';
   }
 
   if (!projectId || !clientEmail || !privateKey) {

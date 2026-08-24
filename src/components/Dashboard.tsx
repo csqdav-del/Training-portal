@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Droplet, Bike, Wind, Zap, Flame, Calendar as CalendarIcon, Link2, RefreshCw, Plus } from 'lucide-react';
 import { WeeklyStats, TrainingZones, PlanDiscipline, Discipline, Workout } from '../types';
@@ -6,6 +6,12 @@ import { RACE, RACE_TARGETS, daysUntilRace, readiness, getWeekForDate, getDayPla
 import { addManualWorkout } from '../lib/manualWorkout';
 import WorkoutDetail from './WorkoutDetail';
 import ActivityDetail from './ActivityDetail';
+import {
+  subscribeToWeekOverrides,
+  applyWeekOverrides,
+  EMPTY_OVERRIDES,
+  WeekPlanOverrides,
+} from '../lib/scheduleOverrides';
 
 interface DashboardProps {
   uid: string;
@@ -50,6 +56,14 @@ export default function Dashboard({
 }: DashboardProps) {
   const [showToday, setShowToday] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
+  const [weekOverrides, setWeekOverrides] = useState<WeekPlanOverrides>(EMPTY_OVERRIDES);
+
+  const currentWeekNumber = getWeekForDate(new Date())?.weekNumber;
+
+  useEffect(() => {
+    if (!currentWeekNumber) return;
+    return subscribeToWeekOverrides(uid, currentWeekNumber, setWeekOverrides);
+  }, [uid, currentWeekNumber]);
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualType, setManualType] = useState<Discipline>('swim');
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
@@ -83,7 +97,17 @@ export default function Dashboard({
 
   const today = new Date();
   const currentWeek = getWeekForDate(today);
-  const todayPlan = getDayPlan(today);
+  // On applique les personnalisations enregistrées pour que le tableau de bord
+  // affiche le même plan que le calendrier.
+  const rawTodayPlan = currentWeek
+    ? applyWeekOverrides(currentWeek.days, weekOverrides).find(
+        (d) => d.date.toDateString() === today.toDateString(),
+      )
+    : getDayPlan(today);
+  // Les séances marquées « sautée » disparaissent du programme du jour.
+  const todayPlan = rawTodayPlan
+    ? { ...rawTodayPlan, sessions: rawTodayPlan.sessions.filter((s) => !weekOverrides.edits[s.id]?.skipped) }
+    : undefined;
   const raceDays = daysUntilRace(today);
   const overallReadiness = Math.round((readiness('swim') + readiness('bike') + readiness('run')) / 3);
 

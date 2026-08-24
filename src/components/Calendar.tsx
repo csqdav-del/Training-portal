@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, CheckCircle2, RotateCcw, Move } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle2, RotateCcw, Move, Pencil, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Workout, DayPlan, Discipline, PlannedSession } from '../types';
 import { TRAINING_PLAN } from '../data/trainingPlan';
-import { subscribeToWeekOverrides, moveSession, resetWeekOverrides, WeekOverrides } from '../lib/scheduleOverrides';
+import {
+  subscribeToWeekOverrides,
+  moveSession,
+  resetWeekOverrides,
+  applyWeekOverrides,
+  EMPTY_OVERRIDES,
+  WeekPlanOverrides,
+} from '../lib/scheduleOverrides';
 import WorkoutDetail from './WorkoutDetail';
+import SessionEditor from './SessionEditor';
 
 interface CalendarProps {
   workouts: Workout[];
@@ -32,26 +40,15 @@ const DISCIPLINE_ICON: Record<Discipline, string> = {
   other: '⚡',
 };
 
-function applyOverrides(days: DayPlan[], overrides: WeekOverrides): DayPlan[] {
-  const bucket: PlannedSession[][] = [[], [], [], [], [], [], []];
-  for (const day of days) {
-    for (const session of day.sessions) {
-      const target = overrides[session.id] ?? day.dayIndex;
-      const safeTarget = target >= 0 && target <= 6 ? target : day.dayIndex;
-      bucket[safeTarget].push(session);
-    }
-  }
-  return days.map((day) => ({ ...day, sessions: bucket[day.dayIndex] }));
-}
-
 export default function Calendar({ workouts, uid }: CalendarProps) {
   const rawWeekIndex = TRAINING_PLAN.findIndex((w) => new Date() >= w.startDate && new Date() <= w.endDate);
   const currentWeekIndex = rawWeekIndex === -1 ? 0 : rawWeekIndex;
   const [weekIndex, setWeekIndex] = useState(currentWeekIndex);
   const [selectedDay, setSelectedDay] = useState<DayPlan | null>(null);
-  const [overrides, setOverrides] = useState<WeekOverrides>({});
+  const [overrides, setOverrides] = useState<WeekPlanOverrides>(EMPTY_OVERRIDES);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
+  const [editing, setEditing] = useState<{ dayIndex: number; session: PlannedSession | null } | null>(null);
 
   const week = TRAINING_PLAN[weekIndex];
 
@@ -60,8 +57,11 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
     return unsub;
   }, [uid, week.weekNumber]);
 
-  const effectiveDays = applyOverrides(week.days, overrides);
-  const hasOverrides = Object.keys(overrides).length > 0;
+  const effectiveDays = applyWeekOverrides(week.days, overrides);
+  const hasOverrides =
+    Object.keys(overrides.moves).length > 0 ||
+    Object.keys(overrides.edits).length > 0 ||
+    Object.keys(overrides.extras).length > 0;
 
   const hasLoggedWorkout = (date: Date, discipline: Discipline) =>
     workouts.some((w) => w.type === discipline && new Date(w.date).toDateString() === date.toDateString());
@@ -84,7 +84,7 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
         <div className="flex gap-2">
           {hasOverrides && (
             <button
-              onClick={() => resetWeekOverrides(uid, week.weekNumber, Object.keys(overrides))}
+              onClick={() => resetWeekOverrides(uid, week.weekNumber)}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:bg-cyber-panel2 border border-cyber-line rounded-lg font-mono text-slate-400 hover:text-primary-300"
             >
               <RotateCcw className="w-4 h-4" /> Réinitialiser
@@ -114,7 +114,8 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
       </div>
 
       <p className="text-xs text-slate-600 font-mono mb-4 flex items-center gap-1.5">
-        <Move className="w-3.5 h-3.5" /> Glisse une séance vers un autre jour pour l'adapter à ton horaire (desktop uniquement)
+        <Move className="w-3.5 h-3.5" /> Glisse une séance vers un autre jour (desktop) · ✏️ pour modifier distance, durée ou zone ·
+        « + Séance » pour en ajouter une — tout est sauvegardé sur ton compte
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-7 gap-2 mt-2">
@@ -154,33 +155,60 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
                 {day.sessions.length === 0 ? (
                   <div className="text-xs text-slate-600">Repos</div>
                 ) : (
-                  day.sessions.map((session) => (
-                    <div
-                      key={session.id}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('text/plain', session.id);
-                        setDraggingId(session.id);
-                      }}
-                      onDragEnd={() => {
-                        setDraggingId(null);
-                        setDragOverDay(null);
-                      }}
-                      onClick={() => setSelectedDay(day)}
-                      className={`text-xs px-2 py-1.5 rounded border cursor-grab active:cursor-grabbing ${DISCIPLINE_STYLE[session.discipline]} flex items-center justify-between gap-1 ${
-                        draggingId === session.id ? 'opacity-40' : ''
-                      }`}
-                      title={session.title}
-                    >
-                      <span className="truncate">
-                        {DISCIPLINE_ICON[session.discipline]} {session.targetDistanceKm > 0 ? `${session.targetDistanceKm}km` : `${session.targetDurationMin}min`}
-                      </span>
-                      {hasLoggedWorkout(day.date, session.discipline) && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-sport-bike shrink-0" />
-                      )}
-                    </div>
-                  ))
+                  day.sessions.map((session) => {
+                    const isSkipped = Boolean(overrides.edits[session.id]?.skipped);
+                    const isCustom =
+                      Boolean(overrides.extras[session.id]) ||
+                      Object.keys(overrides.edits[session.id] ?? {}).some((k) => k !== 'skipped');
+                    return (
+                      <div
+                        key={session.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', session.id);
+                          setDraggingId(session.id);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingId(null);
+                          setDragOverDay(null);
+                        }}
+                        onClick={() => setSelectedDay(day)}
+                        className={`text-xs px-2 py-1.5 rounded border cursor-grab active:cursor-grabbing ${DISCIPLINE_STYLE[session.discipline]} flex items-center justify-between gap-1 ${
+                          draggingId === session.id ? 'opacity-40' : ''
+                        } ${isSkipped ? 'opacity-40 line-through' : ''}`}
+                        title={session.title}
+                      >
+                        <span className="truncate">
+                          {DISCIPLINE_ICON[session.discipline]}{' '}
+                          {session.targetDistanceKm > 0 ? `${session.targetDistanceKm}km` : `${session.targetDurationMin}min`}
+                          {isCustom && <span className="text-[10px] ml-1 opacity-70">•</span>}
+                        </span>
+                        <span className="flex items-center gap-1 shrink-0">
+                          {hasLoggedWorkout(day.date, session.discipline) && !isSkipped && (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-sport-bike" />
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditing({ dayIndex: day.dayIndex, session });
+                            }}
+                            title="Modifier la séance"
+                            className="opacity-60 hover:opacity-100"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })
                 )}
+
+                <button
+                  onClick={() => setEditing({ dayIndex: day.dayIndex, session: null })}
+                  className="w-full flex items-center justify-center gap-1 text-[11px] font-mono text-slate-600 hover:text-primary-300 border border-dashed border-cyber-line hover:border-primary-400/50 rounded py-1"
+                >
+                  <Plus className="w-3 h-3" /> Séance
+                </button>
               </div>
             </div>
           );
@@ -208,6 +236,19 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
       </div>
 
       {selectedDay && <WorkoutDetail day={selectedDay} workouts={workouts} onClose={() => setSelectedDay(null)} />}
+
+      {editing && (
+        <SessionEditor
+          uid={uid}
+          weekNumber={week.weekNumber}
+          dayIndex={editing.dayIndex}
+          dayLabel={DAY_LABELS[editing.dayIndex]}
+          session={editing.session}
+          isExtra={Boolean(editing.session && overrides.extras[editing.session.id])}
+          currentEdit={editing.session ? overrides.edits[editing.session.id] : undefined}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }

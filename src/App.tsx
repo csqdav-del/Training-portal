@@ -8,40 +8,19 @@ import WeightTracker from './components/WeightTracker';
 import VapingCounter from './components/VapingCounter';
 import NutritionTracker from './components/NutritionTracker';
 import { Workout, WeightEntry, WeeklyStats } from './types';
-import { HR_ZONES, WEIGHT_START_LBS } from './data/trainingPlan';
+import { HR_ZONES } from './data/trainingPlan';
 import { auth, signInWithGoogle, signOutUser } from './firebase';
 import { subscribeToWorkouts } from './lib/firestoreWorkouts';
+import { subscribeToWeights, addWeightEntry } from './lib/firestoreWeights';
+import { subscribeToVaping, resetVapingStreak } from './lib/vaping';
 import { connectStrava, syncStrava, subscribeToStravaStatus } from './lib/strava';
-
-const MOCK_WEIGHTS: WeightEntry[] = [
-  {
-    id: '1',
-    userId: 'user1',
-    date: new Date(),
-    weight: 289.5,
-    notes: 'Matin',
-  },
-  {
-    id: '2',
-    userId: 'user1',
-    date: new Date(new Date().setDate(new Date().getDate() - 3)),
-    weight: WEIGHT_START_LBS,
-    notes: 'Matin',
-  },
-  {
-    id: '3',
-    userId: 'user1',
-    date: new Date(new Date().setDate(new Date().getDate() - 7)),
-    weight: 291,
-    notes: 'Matin',
-  },
-];
 
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [weights, setWeights] = useState<WeightEntry[]>(MOCK_WEIGHTS);
+  const [weights, setWeights] = useState<WeightEntry[]>([]);
+  const [vapingStart, setVapingStart] = useState<Date | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'weight' | 'nutrition' | 'vaping'>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [stravaConnected, setStravaConnected] = useState(false);
@@ -61,13 +40,19 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setWorkouts([]);
+      setWeights([]);
+      setVapingStart(null);
       setStravaConnected(false);
       return;
     }
     const unsubWorkouts = subscribeToWorkouts(user.uid, setWorkouts);
+    const unsubWeights = subscribeToWeights(user.uid, setWeights);
+    const unsubVaping = subscribeToVaping(user.uid, setVapingStart);
     const unsubStrava = subscribeToStravaStatus(user.uid, setStravaConnected);
     return () => {
       unsubWorkouts();
+      unsubWeights();
+      unsubVaping();
       unsubStrava();
     };
   }, [user]);
@@ -148,14 +133,8 @@ export default function App() {
     }));
 
   const handleAddWeight = (weight: number, date: Date, notes?: string) => {
-    const newEntry: WeightEntry = {
-      id: Math.random().toString(),
-      userId: 'user1',
-      date,
-      weight,
-      notes,
-    };
-    setWeights([...weights, newEntry]);
+    if (!user) return;
+    addWeightEntry(user.uid, weight, date, notes).catch((err) => console.error('addWeightEntry failed', err));
   };
 
   const tabs = [
@@ -326,8 +305,8 @@ export default function App() {
 
         {activeTab === 'vaping' && (
           <VapingCounter
-            startDate={new Date(new Date().setDate(new Date().getDate() - 15))}
-            onReset={() => {}}
+            startDate={vapingStart ?? new Date()}
+            onReset={() => resetVapingStreak(user.uid).catch((err) => console.error('resetVapingStreak failed', err))}
           />
         )}
       </main>

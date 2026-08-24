@@ -13,6 +13,10 @@ service cloud.firestore {
         allow write: if false; // écrit uniquement par la fonction strava-sync (Admin SDK)
       }
 
+      match /scheduleOverrides/{weekId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
       match /private/{docId} {
         allow read, write: if false; // jamais accessible côté client — Admin SDK seulement
       }

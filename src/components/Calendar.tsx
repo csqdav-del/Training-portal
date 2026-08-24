@@ -1,13 +1,15 @@
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, CheckCircle2, RotateCcw, Move } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Workout, DayPlan, Discipline } from '../types';
+import { Workout, DayPlan, Discipline, PlannedSession } from '../types';
 import { TRAINING_PLAN } from '../data/trainingPlan';
+import { subscribeToWeekOverrides, moveSession, resetWeekOverrides, WeekOverrides } from '../lib/scheduleOverrides';
 import WorkoutDetail from './WorkoutDetail';
 
 interface CalendarProps {
   workouts: Workout[];
+  uid: string;
 }
 
 const DAY_LABELS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
@@ -30,16 +32,45 @@ const DISCIPLINE_ICON: Record<Discipline, string> = {
   other: '⚡',
 };
 
-export default function Calendar({ workouts }: CalendarProps) {
+function applyOverrides(days: DayPlan[], overrides: WeekOverrides): DayPlan[] {
+  const bucket: PlannedSession[][] = [[], [], [], [], [], [], []];
+  for (const day of days) {
+    for (const session of day.sessions) {
+      const target = overrides[session.id] ?? day.dayIndex;
+      const safeTarget = target >= 0 && target <= 6 ? target : day.dayIndex;
+      bucket[safeTarget].push(session);
+    }
+  }
+  return days.map((day) => ({ ...day, sessions: bucket[day.dayIndex] }));
+}
+
+export default function Calendar({ workouts, uid }: CalendarProps) {
   const rawWeekIndex = TRAINING_PLAN.findIndex((w) => new Date() >= w.startDate && new Date() <= w.endDate);
   const currentWeekIndex = rawWeekIndex === -1 ? 0 : rawWeekIndex;
   const [weekIndex, setWeekIndex] = useState(currentWeekIndex);
   const [selectedDay, setSelectedDay] = useState<DayPlan | null>(null);
+  const [overrides, setOverrides] = useState<WeekOverrides>({});
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<number | null>(null);
 
   const week = TRAINING_PLAN[weekIndex];
 
+  useEffect(() => {
+    const unsub = subscribeToWeekOverrides(uid, week.weekNumber, setOverrides);
+    return unsub;
+  }, [uid, week.weekNumber]);
+
+  const effectiveDays = applyOverrides(week.days, overrides);
+  const hasOverrides = Object.keys(overrides).length > 0;
+
   const hasLoggedWorkout = (date: Date, discipline: Discipline) =>
     workouts.some((w) => w.type === discipline && new Date(w.date).toDateString() === date.toDateString());
+
+  const handleDrop = (dayIndex: number) => {
+    if (draggingId) moveSession(uid, week.weekNumber, draggingId, dayIndex);
+    setDraggingId(null);
+    setDragOverDay(null);
+  };
 
   return (
     <div className="glass-panel p-6">
@@ -51,6 +82,14 @@ export default function Calendar({ workouts }: CalendarProps) {
           <p className="text-sm text-primary-300 font-mono">{week.phaseLabel} · {week.focus}</p>
         </div>
         <div className="flex gap-2">
+          {hasOverrides && (
+            <button
+              onClick={() => resetWeekOverrides(uid, week.weekNumber, Object.keys(overrides))}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:bg-cyber-panel2 border border-cyber-line rounded-lg font-mono text-slate-400 hover:text-primary-300"
+            >
+              <RotateCcw className="w-4 h-4" /> Réinitialiser
+            </button>
+          )}
           <button
             onClick={() => setWeekIndex((i) => Math.max(0, i - 1))}
             disabled={weekIndex === 0}
@@ -74,18 +113,38 @@ export default function Calendar({ workouts }: CalendarProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-7 gap-2 mt-6">
-        {week.days.map((day) => {
+      <p className="text-xs text-slate-600 font-mono mb-4 flex items-center gap-1.5">
+        <Move className="w-3.5 h-3.5" /> Glisse une séance vers un autre jour pour l'adapter à ton horaire (desktop uniquement)
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-2 mt-2">
+        {effectiveDays.map((day) => {
           const isToday = day.date.toDateString() === new Date().toDateString();
+          const isDragOver = dragOverDay === day.dayIndex;
           return (
             <div
               key={day.dayIndex}
-              onClick={() => setSelectedDay(day)}
-              className={`border rounded-lg p-3 min-h-32 cursor-pointer transition-all hover:border-primary-400/60 hover:shadow-neon-cyan ${
-                isToday ? 'bg-primary-400/5 border-primary-400/50' : 'bg-cyber-panel2 border-cyber-line'
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverDay(day.dayIndex);
+              }}
+              onDragLeave={() => setDragOverDay((d) => (d === day.dayIndex ? null : d))}
+              onDrop={(e) => {
+                e.preventDefault();
+                handleDrop(day.dayIndex);
+              }}
+              className={`border rounded-lg p-3 min-h-32 transition-all ${
+                isDragOver
+                  ? 'bg-primary-400/10 border-primary-400 shadow-neon-cyan'
+                  : isToday
+                  ? 'bg-primary-400/5 border-primary-400/50'
+                  : 'bg-cyber-panel2 border-cyber-line'
               }`}
             >
-              <div className={`text-sm font-semibold mb-2 font-mono ${isToday ? 'text-primary-300' : 'text-slate-400'}`}>
+              <div
+                onClick={() => setSelectedDay(day)}
+                className={`text-sm font-semibold mb-2 font-mono cursor-pointer ${isToday ? 'text-primary-300' : 'text-slate-400'}`}
+              >
                 {DAY_LABELS[day.dayIndex]}
                 <br />
                 {format(day.date, 'd MMM', { locale: fr })}
@@ -95,10 +154,22 @@ export default function Calendar({ workouts }: CalendarProps) {
                 {day.sessions.length === 0 ? (
                   <div className="text-xs text-slate-600">Repos</div>
                 ) : (
-                  day.sessions.map((session, wIdx) => (
+                  day.sessions.map((session) => (
                     <div
-                      key={wIdx}
-                      className={`text-xs px-2 py-1.5 rounded border ${DISCIPLINE_STYLE[session.discipline]} flex items-center justify-between gap-1`}
+                      key={session.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', session.id);
+                        setDraggingId(session.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingId(null);
+                        setDragOverDay(null);
+                      }}
+                      onClick={() => setSelectedDay(day)}
+                      className={`text-xs px-2 py-1.5 rounded border cursor-grab active:cursor-grabbing ${DISCIPLINE_STYLE[session.discipline]} flex items-center justify-between gap-1 ${
+                        draggingId === session.id ? 'opacity-40' : ''
+                      }`}
                       title={session.title}
                     >
                       <span className="truncate">

@@ -178,6 +178,7 @@ const BIKE_FOCUS = [
 const FORCE_FREQ = (week: number) => (week <= 45 ? 2 : week <= 47 ? 1 : 0);
 
 function makeSession(
+  id: string,
   discipline: PlanDiscipline,
   title: string,
   structure: string[],
@@ -187,6 +188,7 @@ function makeSession(
 ): PlannedSession {
   const z = HR_ZONES[zone];
   return {
+    id,
     discipline,
     title,
     structure,
@@ -220,21 +222,23 @@ function buildWeek(weekNumber: number): WeekPlan {
     const date = addDays(startDate, dayIndex);
     const sessions: PlannedSession[] = [];
 
+    const sid = (slot: string) => `w${weekNumber}-${slot}`;
+
     // Lundi (0): recovery run dès semaine 23
     if (dayIndex === 0 && runHasRecovery) {
       sessions.push(
-        makeSession('run', 'Course — Récupération', ['15-20min easy (Z2), jambes légères'], 'z2', runTotal * 0.18, 20),
+        makeSession(sid('run-recovery'), 'run', 'Course — Récupération', ['15-20min easy (Z2), jambes légères'], 'z2', runTotal * 0.18, 20),
       );
     }
 
     // Mardi (1): natation + force A
     if (dayIndex === 1) {
       sessions.push(
-        makeSession('swim', 'Natation — ' + swimFocus, [swimFocus], 'z2', swimTotal * 0.45, 25 + weekNumber * 0.3),
+        makeSession(sid('swim-a'), 'swim', 'Natation — ' + swimFocus, [swimFocus], 'z2', swimTotal * 0.45, 25 + weekNumber * 0.3),
       );
       if (forceFreq >= 1) {
         sessions.push(
-          makeSession('strength', 'Force — Bas du corps', ['Squats 3x10', 'Deadlifts 3x8', 'Fentes 3x8/jambe', 'Core 5-10min'], 'z2', 0, 45),
+          makeSession(sid('strength-a'), 'strength', 'Force — Bas du corps', ['Squats 3x10', 'Deadlifts 3x8', 'Fentes 3x8/jambe', 'Core 5-10min'], 'z2', 0, 45),
         );
       }
     }
@@ -242,29 +246,29 @@ function buildWeek(weekNumber: number): WeekPlan {
     // Mercredi (2): course — séance qualité
     if (dayIndex === 2) {
       sessions.push(
-        makeSession('run', 'Course — ' + runFocus, [runStructMid], weekNumber >= 23 ? 'z4' : weekNumber >= 7 ? 'z3' : 'z2', runTotal * (runHasLong ? 0.4 : 0.5), 25 + weekNumber * 0.3),
+        makeSession(sid('run-quality'), 'run', 'Course — ' + runFocus, [runStructMid], weekNumber >= 23 ? 'z4' : weekNumber >= 7 ? 'z3' : 'z2', runTotal * (runHasLong ? 0.4 : 0.5), 25 + weekNumber * 0.3),
       );
     }
 
     // Jeudi (3): vélo intensité optionnel (à partir de S17), sinon repos
     if (dayIndex === 3 && weekNumber >= 17 && weekNumber <= 36) {
       sessions.push(
-        makeSession('bike', 'Vélo — Intensité (optionnel)', ['4-5x2-3min @ Z3 (tempo) / 1min easy', 'Warm-up + cool-down easy'], 'z3', bikeTotal * 0.3, 40),
+        makeSession(sid('bike-intensity'), 'bike', 'Vélo — Intensité (optionnel)', ['4-5x2-3min @ Z3 (tempo) / 1min easy', 'Warm-up + cool-down easy'], 'z3', bikeTotal * 0.3, 40),
       );
     }
 
     // Vendredi (4): natation + force B
     if (dayIndex === 4) {
       sessions.push(
-        makeSession('swim', 'Natation — ' + swimFocus, [swimFocus], 'z2', swimTotal * 0.55, 25 + weekNumber * 0.3),
+        makeSession(sid('swim-b'), 'swim', 'Natation — ' + swimFocus, [swimFocus], 'z2', swimTotal * 0.55, 25 + weekNumber * 0.3),
       );
       if (forceFreq >= 2) {
         sessions.push(
-          makeSession('strength', 'Force — Haut du corps', ['Push-ups 3x10', 'Rowing haltères 3x10/bras', 'Développé 3x8', 'Core 5-10min'], 'z2', 0, 45),
+          makeSession(sid('strength-b'), 'strength', 'Force — Haut du corps', ['Push-ups 3x10', 'Rowing haltères 3x10/bras', 'Développé 3x8', 'Core 5-10min'], 'z2', 0, 45),
         );
       } else if (forceFreq === 1) {
         sessions.push(
-          makeSession('strength', 'Force — Maintenance légère', ['Circuit léger 20-30min, jambes/glutes'], 'z2', 0, 30),
+          makeSession(sid('strength-b'), 'strength', 'Force — Maintenance légère', ['Circuit léger 20-30min, jambes/glutes'], 'z2', 0, 30),
         );
       }
     }
@@ -272,14 +276,14 @@ function buildWeek(weekNumber: number): WeekPlan {
     // Samedi (5): course longue (dès S12), sinon repos
     if (dayIndex === 5 && runHasLong) {
       sessions.push(
-        makeSession('run', 'Course — Sortie Longue', [runStructLong], 'z2', runTotal * 0.42, 30 + weekNumber * 0.5),
+        makeSession(sid('run-long'), 'run', 'Course — Sortie Longue', [runStructLong], 'z2', runTotal * 0.42, 30 + weekNumber * 0.5),
       );
     }
 
     // Dimanche (6): vélo long — règle permanente
     if (dayIndex === 6) {
       sessions.push(
-        makeSession('bike', 'Vélo — Sortie Longue (' + bikeFocus + ')', [bikeFocus, 'Cadence 85-95 rpm, Z2 majoritaire'], 'z2', bikeTotal, (bikeTotal / 25) * 60),
+        makeSession(sid('bike-long'), 'bike', 'Vélo — Sortie Longue (' + bikeFocus + ')', [bikeFocus, 'Cadence 85-95 rpm, Z2 majoritaire'], 'z2', bikeTotal, (bikeTotal / 25) * 60),
       );
     }
 

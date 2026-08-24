@@ -69,6 +69,7 @@ export type ZoneKey = 'z1' | 'z2' | 'z3' | 'z4' | 'z5';
 export type Phase = 'Base' | 'Build' | 'Peak' | 'Taper';
 
 export interface PlannedSession {
+  id: string;
   discipline: PlanDiscipline;
   title: string;
   structure: string[];

@@ -297,7 +297,7 @@ export default function App() {
         )}
 
         {activeTab === 'calendar' && (
-          <Calendar workouts={workouts} />
+          <Calendar workouts={workouts} uid={user.uid} />
         )}
 
         {activeTab === 'weight' && (

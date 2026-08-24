@@ -299,6 +299,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && (
           <Dashboard
+            uid={user.uid}
             weeklyStats={weeklyStats}
             zones={HR_ZONES}
             weightData={weightData}

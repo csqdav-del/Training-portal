@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Droplet, Bike, Wind, Zap, Flame, Calendar as CalendarIcon, Link2, RefreshCw } from 'lucide-react';
+import { Droplet, Bike, Wind, Zap, Flame, Calendar as CalendarIcon, Link2, RefreshCw, Plus } from 'lucide-react';
 import { WeeklyStats, TrainingZones, PlanDiscipline, Discipline, Workout } from '../types';
 import { RACE, RACE_TARGETS, daysUntilRace, readiness, getWeekForDate, getDayPlan } from '../data/trainingPlan';
+import { addManualWorkout } from '../lib/manualWorkout';
 import WorkoutDetail from './WorkoutDetail';
 
 interface DashboardProps {
+  uid: string;
   weeklyStats: WeeklyStats;
   zones: TrainingZones;
   weightData: { date: string; weight: number }[];
@@ -34,6 +36,7 @@ const ACTIVITY_ICON: Record<Discipline, string> = {
 };
 
 export default function Dashboard({
+  uid,
   weeklyStats,
   zones,
   weightData,
@@ -45,6 +48,36 @@ export default function Dashboard({
   onSyncStrava,
 }: DashboardProps) {
   const [showToday, setShowToday] = useState(false);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualType, setManualType] = useState<Discipline>('swim');
+  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
+  const [manualDuration, setManualDuration] = useState('');
+  const [manualDistance, setManualDistance] = useState('');
+  const [manualCalories, setManualCalories] = useState('');
+  const [manualHr, setManualHr] = useState('');
+  const [manualNotes, setManualNotes] = useState('');
+  const [savingManual, setSavingManual] = useState(false);
+
+  const handleAddManual = async () => {
+    if (!manualDuration) return;
+    setSavingManual(true);
+    await addManualWorkout(uid, {
+      type: manualType,
+      date: new Date(manualDate),
+      duration: parseFloat(manualDuration) || 0,
+      distance: manualDistance ? parseFloat(manualDistance) : undefined,
+      calories: manualCalories ? parseFloat(manualCalories) : undefined,
+      heartRateAvg: manualHr ? parseFloat(manualHr) : undefined,
+      notes: manualNotes || undefined,
+    });
+    setSavingManual(false);
+    setShowManualForm(false);
+    setManualDuration('');
+    setManualDistance('');
+    setManualCalories('');
+    setManualHr('');
+    setManualNotes('');
+  };
 
   const today = new Date();
   const currentWeek = getWeekForDate(today);
@@ -258,9 +291,89 @@ export default function Dashboard({
 
         {/* Activités récentes */}
         <div className="glass-panel p-4">
-          <h3 className="text-lg font-semibold text-slate-100 mb-4 uppercase tracking-wide">Activités Récentes</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-100 uppercase tracking-wide">Activités Récentes</h3>
+            <button
+              onClick={() => setShowManualForm(!showManualForm)}
+              className="flex items-center gap-1 text-xs bg-primary-600/20 border border-primary-400/50 text-primary-300 px-2.5 py-1.5 rounded-lg hover:bg-primary-600/30"
+            >
+              <Plus className="w-3.5 h-3.5" /> Ajouter
+            </button>
+          </div>
+
+          {showManualForm && (
+            <div className="bg-cyber-panel2 border border-cyber-line rounded-lg p-3 mb-4 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={manualType}
+                  onChange={(e) => setManualType(e.target.value as Discipline)}
+                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
+                >
+                  <option value="swim">🏊 Natation</option>
+                  <option value="bike">🚴 Vélo</option>
+                  <option value="run">🏃 Course</option>
+                  <option value="strength">💪 Force</option>
+                  <option value="walk">🚶 Marche</option>
+                  <option value="other">⚡ Autre</option>
+                </select>
+                <input
+                  type="date"
+                  value={manualDate}
+                  onChange={(e) => setManualDate(e.target.value)}
+                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  type="number"
+                  value={manualDuration}
+                  onChange={(e) => setManualDuration(e.target.value)}
+                  placeholder="Durée (min)"
+                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
+                />
+                <input
+                  type="number"
+                  value={manualDistance}
+                  onChange={(e) => setManualDistance(e.target.value)}
+                  placeholder="Distance (km)"
+                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
+                />
+                <input
+                  type="number"
+                  value={manualCalories}
+                  onChange={(e) => setManualCalories(e.target.value)}
+                  placeholder="Calories"
+                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  value={manualHr}
+                  onChange={(e) => setManualHr(e.target.value)}
+                  placeholder="BPM moyen"
+                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
+                />
+                <input
+                  type="text"
+                  value={manualNotes}
+                  onChange={(e) => setManualNotes(e.target.value)}
+                  placeholder="Notes (opt.)"
+                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
+                />
+              </div>
+              <button
+                onClick={handleAddManual}
+                disabled={savingManual || !manualDuration}
+                className="w-full bg-primary-600/20 border border-primary-400/50 text-primary-300 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary-600/30 disabled:opacity-50"
+              >
+                {savingManual ? 'Enregistrement...' : 'Enregistrer'}
+              </button>
+            </div>
+          )}
+
           {workouts.length === 0 ? (
-            <div className="text-slate-500 text-sm font-mono">Aucune activité — connecte Strava pour synchroniser</div>
+            <div className="text-slate-500 text-sm font-mono">Aucune activité — connecte Strava ou ajoute-en une manuellement</div>
           ) : (
             <div className="space-y-2">
               {[...workouts]

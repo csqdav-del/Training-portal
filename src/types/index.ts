@@ -101,3 +101,26 @@ export interface WeekPlan {
     strengthSessions: number;
   };
 }
+
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export interface MealEntry {
+  id: string;
+  mealType: MealType;
+  label: string;
+  grams: number;
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  loggedAt: string; // ISO timestamp
+}
+
+export interface FoodSearchResult {
+  foodId: string;
+  label: string;
+  kcal100: number;
+  protein100: number;
+  carbs100: number;
+  fat100: number;
+}

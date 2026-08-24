@@ -45,6 +45,14 @@ export const TOTAL_WEEKS = 48;
 export const WEIGHT_GOAL_LBS = 275; // 125 kg cible race
 export const WEIGHT_START_LBS = 290; // 131.5 kg baseline août 2026
 
+export const NUTRITION_TARGETS = {
+  kcal: 2200,
+  proteinG: 175,
+  carbsG: 250,
+  fatG: 70,
+  hydrationL: 3.5,
+};
+
 const lerp = (a: number, b: number, t: number) => a + (b - a) * Math.max(0, Math.min(1, t));
 
 function blockValue(week: number, blocks: { from: number; to: number; valFrom: number; valTo: number }[]): number {

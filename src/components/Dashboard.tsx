@@ -302,7 +302,7 @@ export default function Dashboard({
         </div>
       </div>
 
-      {showToday && todayPlan && <WorkoutDetail day={todayPlan} onClose={() => setShowToday(false)} />}
+      {showToday && todayPlan && <WorkoutDetail day={todayPlan} workouts={workouts} onClose={() => setShowToday(false)} />}
     </div>
   );
 }

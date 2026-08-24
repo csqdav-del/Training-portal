@@ -1,12 +1,14 @@
+import { createPortal } from 'react-dom';
 import { X, Target, Heart, Ruler, Clock } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { DayPlan, PlanDiscipline } from '../types';
+import { DayPlan, PlanDiscipline, Workout } from '../types';
 import { TRAINING_PLAN } from '../data/trainingPlan';
 
 interface WorkoutDetailProps {
   day: DayPlan;
+  workouts: Workout[];
   onClose: () => void;
 }
 
@@ -24,10 +26,13 @@ const progressionData = TRAINING_PLAN.map((w) => ({
   Course: w.volumeSummary.runKm,
 }));
 
-export default function WorkoutDetail({ day, onClose }: WorkoutDetailProps) {
+export default function WorkoutDetail({ day, workouts, onClose }: WorkoutDetailProps) {
   const currentWeekNumber = TRAINING_PLAN.find((w) => day.date >= w.startDate && day.date <= w.endDate)?.weekNumber ?? 1;
 
-  return (
+  const findActual = (discipline: PlanDiscipline) =>
+    workouts.find((w) => w.type === discipline && new Date(w.date).toDateString() === day.date.toDateString());
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
         className="glass-panel w-full max-w-3xl max-h-[90vh] flex flex-col shadow-neon-cyan"
@@ -52,11 +57,19 @@ export default function WorkoutDetail({ day, onClose }: WorkoutDetailProps) {
           <div className="space-y-4 mb-8">
             {day.sessions.map((session, idx) => {
               const meta = DISCIPLINE_META[session.discipline];
+              const actual = findActual(session.discipline);
               return (
                 <div key={idx} className={`bg-cyber-panel2 border rounded-lg p-4 ${meta.glow}`}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-2xl">{meta.icon}</span>
-                    <h3 className={`text-lg font-bold ${meta.color}`}>{session.title}</h3>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">{meta.icon}</span>
+                      <h3 className={`text-lg font-bold ${meta.color}`}>{session.title}</h3>
+                    </div>
+                    {actual && (
+                      <span className="text-xs bg-sport-bike/15 text-sport-bike border border-sport-bike/40 rounded-full px-2 py-1 font-mono shrink-0">
+                        ✓ Réalisé
+                      </span>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -97,6 +110,31 @@ export default function WorkoutDetail({ day, onClose }: WorkoutDetailProps) {
                       </li>
                     ))}
                   </ul>
+
+                  {actual && (
+                    <div className="mt-4 pt-4 border-t border-cyber-line">
+                      <div className="text-xs text-sport-bike uppercase tracking-wide mb-2 font-mono">Réel (Strava)</div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="text-sm font-mono text-slate-300">
+                          <span className="text-slate-500">Distance: </span>
+                          {actual.distance ? `${actual.distance} km` : '—'}
+                        </div>
+                        <div className="text-sm font-mono text-slate-300">
+                          <span className="text-slate-500">Durée: </span>
+                          {actual.duration} min
+                        </div>
+                        <div className="text-sm font-mono text-slate-300">
+                          <span className="text-slate-500">BPM moy: </span>
+                          {actual.heartRate ? actual.heartRate.avg : '—'}
+                        </div>
+                        <div className="text-sm font-mono text-slate-300">
+                          <span className="text-slate-500">Calories: </span>
+                          {actual.calories ?? '—'}
+                        </div>
+                      </div>
+                      {actual.notes && <div className="text-xs text-slate-500 mt-2 italic">"{actual.notes}"</div>}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -124,6 +162,7 @@ export default function WorkoutDetail({ day, onClose }: WorkoutDetailProps) {
         </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

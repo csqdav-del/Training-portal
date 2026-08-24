@@ -72,6 +72,19 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
+    if (!stravaConnected) return;
+    syncStrava().then((result) => {
+      if ('synced' in result) setLastSyncCount(result.synced);
+    });
+    const interval = setInterval(() => {
+      syncStrava().then((result) => {
+        if ('synced' in result) setLastSyncCount(result.synced);
+      });
+    }, 10 * 60 * 1000); // re-sync toutes les 10 minutes tant que l'app est ouverte
+    return () => clearInterval(interval);
+  }, [stravaConnected]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const strava = params.get('strava');
     if (strava === 'connected' || strava === 'error') {

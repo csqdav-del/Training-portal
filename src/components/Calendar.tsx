@@ -207,7 +207,7 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
         </div>
       </div>
 
-      {selectedDay && <WorkoutDetail day={selectedDay} onClose={() => setSelectedDay(null)} />}
+      {selectedDay && <WorkoutDetail day={selectedDay} workouts={workouts} onClose={() => setSelectedDay(null)} />}
     </div>
   );
 }

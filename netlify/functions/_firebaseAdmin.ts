@@ -48,8 +48,17 @@ function getAdminApp() {
   return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 }
 
+let firestoreInstance: ReturnType<typeof getFirestore> | undefined;
+
 export function adminDb() {
-  return getFirestore(getAdminApp());
+  if (!firestoreInstance) {
+    firestoreInstance = getFirestore(getAdminApp());
+    // Netlify's serverless Node runtime hits a known firebase-admin/gRPC + OpenSSL 3.x
+    // bug ("error:1E08010C:DECODER routines::unsupported") when the gRPC credential
+    // plugin signs requests. REST transport sidesteps that code path entirely.
+    firestoreInstance.settings({ preferRest: true });
+  }
+  return firestoreInstance;
 }
 
 export function adminAuth() {

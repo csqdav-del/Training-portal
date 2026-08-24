@@ -178,6 +178,11 @@ export default function App() {
           {authError && (
             <p className="mt-4 text-xs text-sport-run font-mono text-center break-words">{authError}</p>
           )}
+          <div className="mt-6 pt-4 border-t border-cyber-line text-[10px] text-slate-600 font-mono break-all space-y-0.5">
+            <p>debug projectId: {import.meta.env.VITE_FIREBASE_PROJECT_ID || '(vide)'}</p>
+            <p>debug authDomain: {import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '(vide)'}</p>
+            <p>debug apiKey: {import.meta.env.VITE_FIREBASE_API_KEY || '(vide)'}</p>
+          </div>
         </div>
       </div>
     );

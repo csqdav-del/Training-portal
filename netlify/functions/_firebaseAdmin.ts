@@ -24,7 +24,14 @@ function getAdminApp() {
   }
 
   if (!privateKey.includes('BEGIN PRIVATE KEY')) {
-    throw new Error('FIREBASE_PRIVATE_KEY does not look like a PEM private key (missing BEGIN PRIVATE KEY marker).');
+    console.error('FIREBASE_PRIVATE_KEY diagnostic', {
+      length: privateKey.length,
+      first30: privateKey.slice(0, 30),
+      last30: privateKey.slice(-30),
+      hasLiteralBackslashN: privateKey.includes('\\n'),
+      hasRealNewline: privateKey.includes('\n'),
+    });
+    throw new Error('FIREBASE_PRIVATE_KEY does not look like a PEM private key (missing BEGIN PRIVATE KEY marker) — see diagnostic log above.');
   }
 
   return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });

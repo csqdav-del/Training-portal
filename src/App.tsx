@@ -12,7 +12,7 @@ import { HR_ZONES } from './data/trainingPlan';
 import { auth, signInWithGoogle, signOutUser } from './firebase';
 import { subscribeToWorkouts } from './lib/firestoreWorkouts';
 import { subscribeToWeights, addWeightEntry } from './lib/firestoreWeights';
-import { subscribeToVaping, resetVapingStreak } from './lib/vaping';
+import { subscribeToVaping, setVapingStart, resetVapingStreak } from './lib/vaping';
 import { connectStrava, syncStrava, subscribeToStravaStatus } from './lib/strava';
 
 export default function App() {
@@ -305,7 +305,10 @@ export default function App() {
 
         {activeTab === 'vaping' && (
           <VapingCounter
-            startDate={vapingStart ?? new Date()}
+            startDate={vapingStart}
+            onSetStartDate={(date) =>
+              setVapingStart(user.uid, date).catch((err) => console.error('setVapingStart failed', err))
+            }
             onReset={() => resetVapingStreak(user.uid).catch((err) => console.error('resetVapingStreak failed', err))}
           />
         )}

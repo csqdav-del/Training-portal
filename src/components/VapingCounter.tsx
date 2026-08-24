@@ -1,45 +1,112 @@
 import { useState, useEffect } from 'react';
-import { Flame, Heart } from 'lucide-react';
+import { Flame, Heart, Pencil, Check } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface VapingCounterProps {
-  startDate: Date;
+  /** null tant qu'aucune date d'arrêt n'a été enregistrée. */
+  startDate: Date | null;
+  onSetStartDate: (date: Date) => void;
   onReset?: () => void;
 }
 
-export default function VapingCounter({ startDate, onReset }: VapingCounterProps) {
+const COST_PER_DAY = 5; // $/jour, estimation
+
+export default function VapingCounter({ startDate, onSetStartDate, onReset }: VapingCounterProps) {
   const [daysCount, setDaysCount] = useState(0);
   const [hours, setHours] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [dateInput, setDateInput] = useState(format(startDate ?? new Date(), 'yyyy-MM-dd'));
 
   useEffect(() => {
+    if (startDate) setDateInput(format(startDate, 'yyyy-MM-dd'));
+  }, [startDate]);
+
+  useEffect(() => {
+    if (!startDate) {
+      setDaysCount(0);
+      setHours(0);
+      return;
+    }
+
     const calculateTime = () => {
-      const now = new Date();
-      const start = new Date(startDate);
-      const diffMs = now.getTime() - start.getTime();
-
-      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      const remainingMs = diffMs % (1000 * 60 * 60 * 24);
-      const hoursValue = Math.floor(remainingMs / (1000 * 60 * 60));
-
-      setDaysCount(days);
-      setHours(hoursValue);
+      const diffMs = Date.now() - new Date(startDate).getTime();
+      const safeMs = Math.max(0, diffMs); // une date future ne doit pas donner de compteur négatif
+      setDaysCount(Math.floor(safeMs / (1000 * 60 * 60 * 24)));
+      setHours(Math.floor((safeMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
     };
 
     calculateTime();
-    const interval = setInterval(calculateTime, 60000); // Update every minute
-
+    const interval = setInterval(calculateTime, 60000);
     return () => clearInterval(interval);
   }, [startDate]);
 
-  // Estimated savings (average $5/day)
-  const moneySaved = (daysCount * 5).toFixed(2);
-  // Estimated lung recovery (very rough estimate)
+  const handleSaveDate = () => {
+    if (!dateInput) return;
+    // On garde midi local pour éviter les décalages de fuseau au passage en ISO.
+    const [y, m, d] = dateInput.split('-').map(Number);
+    onSetStartDate(new Date(y, m - 1, d, 12, 0, 0));
+    setEditing(false);
+  };
+
+  const moneySaved = (daysCount * COST_PER_DAY).toFixed(2);
   const lungImprovement = Math.min(100, Math.floor((daysCount / 30) * 5));
+
+  // Première visite : on demande la date au lieu d'inventer « aujourd'hui ».
+  if (!startDate) {
+    return (
+      <div className="glass-panel p-8 shadow-neon-purple border-sport-strength/30 max-w-md mx-auto">
+        <h2 className="text-2xl font-display font-bold text-sport-strength mb-2 uppercase tracking-wide text-center">
+          Arrêt de la Vapoteuse 🎯
+        </h2>
+        <p className="text-slate-400 font-mono text-sm text-center mb-6">Quand as-tu arrêté ?</p>
+        <input
+          type="date"
+          value={dateInput}
+          max={format(new Date(), 'yyyy-MM-dd')}
+          onChange={(e) => setDateInput(e.target.value)}
+          className="w-full bg-cyber-bg border border-cyber-line rounded-lg px-3 py-2 text-slate-100 font-mono mb-4 focus:border-primary-400 focus:outline-none"
+        />
+        <button
+          onClick={handleSaveDate}
+          className="w-full bg-sport-strength/20 border border-sport-strength/50 text-sport-strength py-2.5 rounded-lg font-semibold hover:bg-sport-strength/30"
+        >
+          Démarrer le compteur
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="glass-panel p-8 shadow-neon-purple border-sport-strength/30">
       <div className="text-center mb-8">
         <h2 className="text-3xl font-display font-bold text-sport-strength mb-2 uppercase tracking-wide">Arrêt de la Vapoteuse 🎯</h2>
-        <p className="text-slate-400 font-mono">Tu as commencé {new Date(startDate).toLocaleDateString('fr-FR')}</p>
+        {editing ? (
+          <div className="flex items-center justify-center gap-2">
+            <input
+              type="date"
+              value={dateInput}
+              max={format(new Date(), 'yyyy-MM-dd')}
+              onChange={(e) => setDateInput(e.target.value)}
+              className="bg-cyber-bg border border-cyber-line rounded-lg px-3 py-1.5 text-sm text-slate-100 font-mono focus:border-primary-400 focus:outline-none"
+            />
+            <button
+              onClick={handleSaveDate}
+              className="p-2 rounded-lg border border-sport-strength/50 text-sport-strength hover:bg-sport-strength/20"
+              title="Enregistrer"
+            >
+              <Check className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-slate-400 font-mono hover:text-primary-300 inline-flex items-center gap-1.5"
+            title="Corriger la date d'arrêt"
+          >
+            Tu as arrêté le {new Date(startDate).toLocaleDateString('fr-FR')}
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Main Counter */}
@@ -90,7 +157,9 @@ export default function VapingCounter({ startDate, onReset }: VapingCounterProps
       {onReset && (
         <div className="flex justify-center">
           <button
-            onClick={onReset}
+            onClick={() => {
+              if (window.confirm('Repartir de zéro à partir de maintenant ?')) onReset();
+            }}
             className="bg-sport-run/20 border border-sport-run/50 text-sport-run hover:bg-sport-run/30 px-6 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             Réinitialiser le compteur
@@ -104,9 +173,9 @@ export default function VapingCounter({ startDate, onReset }: VapingCounterProps
           {daysCount === 0
             ? "C'est le premier jour ! Tu vas le faire 💪"
             : daysCount < 7
-            ? "Les premiers jours sont les plus durs. Continue !"
+            ? 'Les premiers jours sont les plus durs. Continue !'
             : daysCount < 30
-            ? "Un mois ? Presque là ! Ton cardio te remerciera 🫁"
+            ? 'Un mois ? Presque là ! Ton cardio te remerciera 🫁'
             : "Wow ! Plus d'un mois ! Tu es une machine 🔥"}
         </p>
       </div>

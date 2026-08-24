@@ -1,6 +1,7 @@
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { createPrivateKey } from 'node:crypto';
 
 function getAdminApp() {
   const existing = getApps();
@@ -43,6 +44,21 @@ function getAdminApp() {
       hasRealNewline: privateKey.includes('\n'),
     });
     throw new Error('FIREBASE_PRIVATE_KEY does not look like a PEM private key (missing BEGIN PRIVATE KEY marker) — see diagnostic log above.');
+  }
+
+  // Re-parse and re-export via Node's own crypto so google-auth-library's JWT
+  // signer receives a canonically-formatted PEM. Node 18+/OpenSSL 3.x's DECODER
+  // can reject an otherwise-valid but hand-normalized PEM string at sign time
+  // ("error:1E08010C:DECODER routines::unsupported"), even when preferRest
+  // avoids the gRPC credential path — JWTAccess still signs with crypto.sign()
+  // directly on whatever PEM string it's given.
+  try {
+    privateKey = createPrivateKey(privateKey)
+      .export({ type: 'pkcs8', format: 'pem' })
+      .toString();
+  } catch (err) {
+    console.error('FIREBASE_PRIVATE_KEY failed to parse as a private key', err);
+    throw new Error('FIREBASE_PRIVATE_KEY is not a valid private key (Node crypto could not parse it).');
   }
 
   return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });

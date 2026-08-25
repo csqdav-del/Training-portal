@@ -32,6 +32,18 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
 
+      // Rapports du Coach IA (un doc par analyse) et fil de conversation.
+      // Écrits par la fonction serverless `coach` (Admin SDK) ; le client les lit
+      // via cette même fonction, mais la règle reste ouverte au propriétaire pour
+      // qu'il puisse purger son historique depuis l'app.
+      match /coachReports/{reportId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      match /coachThreads/{threadId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
       // Relevés de poids saisis dans l'app (un doc par jour, id = YYYY-MM-DD).
       match /weights/{entryId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;

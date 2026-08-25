@@ -8,6 +8,7 @@ import WeightTracker from './components/WeightTracker';
 import VapingCounter from './components/VapingCounter';
 import PuffTracker from './components/PuffTracker';
 import NutritionTracker from './components/NutritionTracker';
+import Coach from './components/Coach';
 import { Workout, WeightEntry, WeeklyStats, DailyMetric, Discipline } from './types';
 import { HR_ZONES } from './data/trainingPlan';
 import { auth, signInWithGoogle, signOutUser } from './firebase';
@@ -30,7 +31,7 @@ export default function App() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [vapingStart, setVapingStart] = useState<Date | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'weight' | 'nutrition' | 'vaping'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'coach' | 'weight' | 'nutrition' | 'vaping'>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [stravaConnected, setStravaConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -233,6 +234,7 @@ export default function App() {
   const tabs = [
     { id: 'dashboard', label: '📊 Tableau de bord' },
     { id: 'calendar', label: '📅 Calendrier' },
+    { id: 'coach', label: '🤖 Coach' },
     { id: 'weight', label: '⚖️ Poids' },
     { id: 'nutrition', label: '🍎 Nutrition' },
     { id: 'vaping', label: '🎯 Arrêt Vape' },
@@ -395,6 +397,10 @@ export default function App() {
 
         {activeTab === 'calendar' && (
           <Calendar workouts={workouts} uid={user.uid} />
+        )}
+
+        {activeTab === 'coach' && (
+          <Coach uid={user.uid} />
         )}
 
         {activeTab === 'weight' && (

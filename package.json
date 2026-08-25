@@ -8,9 +8,11 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "android:sync": "npm run build && cap sync android",
-    "android:open": "cap open android"
+    "android:open": "cap open android",
+    "typecheck:functions": "tsc --noEmit -p tsconfig.netlify.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
     "@capacitor-firebase/authentication": "^8.0.0",
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",

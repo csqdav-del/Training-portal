@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Target, Heart, Ruler, Clock, Check, Repeat } from 'lucide-react';
+import { X, Target, Heart, Ruler, Clock, Check, Repeat, Dumbbell, Gauge } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { DayPlan, PlanDiscipline, PlannedSession, Workout } from '../types';
 import { TRAINING_PLAN } from '../data/trainingPlan';
+import { formatDelta, formatDuration, formatPace, paceLabel } from '../lib/format';
 import LogWorkoutModal from './LogWorkoutModal';
 
 interface WorkoutDetailProps {
@@ -103,36 +104,80 @@ export default function WorkoutDetail({ uid, day, workouts, onClose }: WorkoutDe
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                    <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3">
-                      <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
-                        <Target className="w-3.5 h-3.5" /> ZONE
+                  {/* En salle, zone FC, BPM et distance n'ont pas de sens : on ne
+                      garde que la durée et la liste des mouvements à faire. */}
+                  {session.targetExercises ? (
+                    <div className="mb-4">
+                      <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3 inline-flex items-center gap-2 mb-3">
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        <span className="text-xs text-slate-500">DURÉE</span>
+                        <span className="text-lg font-bold font-mono text-slate-100">
+                          {formatDuration(session.targetDurationMin)}
+                        </span>
                       </div>
-                      <div className={`text-lg font-bold font-mono ${meta.color}`}>{session.targetZone.toUpperCase()}</div>
+
+                      <div className="bg-cyber-bg border border-cyber-line rounded-lg overflow-hidden">
+                        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-cyber-line text-xs text-slate-500 uppercase tracking-wide font-mono">
+                          <Dumbbell className="w-3.5 h-3.5" /> Exercices à faire
+                        </div>
+                        <ul className="divide-y divide-cyber-line">
+                          {session.targetExercises.map((ex, i) => (
+                            <li key={i} className="flex items-baseline justify-between gap-3 px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="text-sm text-slate-200">{ex.name}</div>
+                                {ex.hint && <div className="text-xs text-slate-600">{ex.hint}</div>}
+                              </div>
+                              <span className={`text-sm font-mono shrink-0 ${meta.color}`}>
+                                {ex.sets} × {ex.reps}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
-                    <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3">
-                      <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
-                        <Heart className="w-3.5 h-3.5" /> BPM
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                      <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3">
+                        <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
+                          <Target className="w-3.5 h-3.5" /> ZONE
+                        </div>
+                        <div className={`text-lg font-bold font-mono ${meta.color}`}>
+                          {session.targetZone.toUpperCase()}
+                        </div>
                       </div>
-                      <div className="text-lg font-bold font-mono text-slate-100">
-                        {session.targetBpmMin}-{session.targetBpmMax}
+                      <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3">
+                        <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
+                          <Heart className="w-3.5 h-3.5" /> BPM
+                        </div>
+                        <div className="text-lg font-bold font-mono text-slate-100">
+                          {session.targetBpmMin}-{session.targetBpmMax}
+                        </div>
+                      </div>
+                      <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3">
+                        <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
+                          <Ruler className="w-3.5 h-3.5" /> DISTANCE
+                        </div>
+                        <div className="text-lg font-bold font-mono text-slate-100">
+                          {session.targetDistanceKm > 0 ? `${session.targetDistanceKm} km` : '—'}
+                        </div>
+                      </div>
+                      <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3">
+                        <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
+                          <Clock className="w-3.5 h-3.5" /> DURÉE
+                        </div>
+                        <div className="text-lg font-bold font-mono text-slate-100">
+                          {formatDuration(session.targetDurationMin)}
+                        </div>
+                        {/* L'allure visée se déduit de la cible distance/durée. */}
+                        {formatPace(session.discipline, session.targetDistanceKm, session.targetDurationMin) && (
+                          <div className="text-[11px] text-slate-600 font-mono mt-0.5 flex items-center gap-1">
+                            <Gauge className="w-3 h-3" />
+                            {formatPace(session.discipline, session.targetDistanceKm, session.targetDurationMin)}
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3">
-                      <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
-                        <Ruler className="w-3.5 h-3.5" /> DISTANCE
-                      </div>
-                      <div className="text-lg font-bold font-mono text-slate-100">
-                        {session.targetDistanceKm > 0 ? `${session.targetDistanceKm} km` : '—'}
-                      </div>
-                    </div>
-                    <div className="bg-cyber-bg border border-cyber-line rounded-lg p-3">
-                      <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
-                        <Clock className="w-3.5 h-3.5" /> DURÉE
-                      </div>
-                      <div className="text-lg font-bold font-mono text-slate-100">{session.targetDurationMin} min</div>
-                    </div>
-                  </div>
+                  )}
 
                   <ul className="space-y-1">
                     {session.structure.map((line, i) => (
@@ -152,11 +197,48 @@ export default function WorkoutDetail({ uid, day, workouts, onClose }: WorkoutDe
                         <div className="text-sm font-mono text-slate-300">
                           <span className="text-slate-500">Distance: </span>
                           {actual.distance ? `${actual.distance} km` : '—'}
+                          {/* Écart au plan : l'important n'est pas d'avoir suivi à la
+                              lettre, c'est de voir de combien on s'en écarte. */}
+                          {actual.distance != null && session.targetDistanceKm > 0 && (
+                            <span
+                              className={`ml-1 text-xs ${
+                                actual.distance >= session.targetDistanceKm ? 'text-sport-bike' : 'text-amber-300'
+                              }`}
+                            >
+                              ({formatDelta(actual.distance - session.targetDistanceKm, 'km', 2)})
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm font-mono text-slate-300">
                           <span className="text-slate-500">Durée: </span>
-                          {actual.duration} min
+                          {formatDuration(actual.duration)}
+                          {session.targetDurationMin > 0 && (
+                            <span
+                              className={`ml-1 text-xs ${
+                                actual.duration >= session.targetDurationMin ? 'text-sport-bike' : 'text-amber-300'
+                              }`}
+                            >
+                              ({formatDelta(actual.duration - session.targetDurationMin, 'min')})
+                            </span>
+                          )}
                         </div>
+                        {formatPace(actual.type, actual.distance, actual.duration) && (
+                          <div className="text-sm font-mono text-slate-300">
+                            <span className="text-slate-500">{paceLabel(actual.type)}: </span>
+                            {formatPace(actual.type, actual.distance, actual.duration)}
+                            {formatPace(session.discipline, session.targetDistanceKm, session.targetDurationMin) && (
+                              <span className="ml-1 text-xs text-slate-600">
+                                (visé{' '}
+                                {formatPace(
+                                  session.discipline,
+                                  session.targetDistanceKm,
+                                  session.targetDurationMin,
+                                )}
+                                )
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div className="text-sm font-mono text-slate-300">
                           <span className="text-slate-500">BPM moy: </span>
                           {actual.heartRate ? actual.heartRate.avg : '—'}

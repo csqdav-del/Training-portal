@@ -1,9 +1,22 @@
-import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, CheckCircle2, RotateCcw, Move, Pencil, Plus } from 'lucide-react';
-import { format } from 'date-fns';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  RotateCcw,
+  Move,
+  Pencil,
+  Plus,
+  CalendarDays,
+  CalendarRange,
+  ListOrdered,
+  Flag,
+} from 'lucide-react';
+import { addMonths, endOfMonth, endOfWeek, format, isSameMonth, startOfMonth, startOfWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Workout, DayPlan, Discipline, PlannedSession } from '../types';
-import { TRAINING_PLAN } from '../data/trainingPlan';
+import { RACE, TRAINING_PLAN } from '../data/trainingPlan';
+import { summarizeEffort } from '../lib/format';
 import {
   subscribeToWeekOverrides,
   moveSession,
@@ -21,6 +34,23 @@ interface CalendarProps {
 }
 
 const DAY_LABELS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+const DAY_LABELS_SHORT = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+/** Les trois échelles de lecture du plan : la semaine, le mois, les 48 semaines. */
+type CalendarView = 'week' | 'month' | 'plan';
+
+const VIEWS: { id: CalendarView; label: string; icon: typeof CalendarDays }[] = [
+  { id: 'week', label: 'Semaine', icon: CalendarDays },
+  { id: 'month', label: 'Mois', icon: CalendarRange },
+  { id: 'plan', label: 'Plan complet', icon: ListOrdered },
+];
+
+const PHASE_STYLE: Record<string, string> = {
+  Base: 'bg-sport-swim/15 text-sport-swim border-sport-swim/40',
+  Build: 'bg-sport-bike/15 text-sport-bike border-sport-bike/40',
+  Peak: 'bg-sport-run/15 text-sport-run border-sport-run/40',
+  Taper: 'bg-sport-strength/15 text-sport-strength border-sport-strength/40',
+};
 
 const DISCIPLINE_STYLE: Record<Discipline, string> = {
   swim: 'bg-sport-swim/15 text-sport-swim border-sport-swim/40',
@@ -49,6 +79,8 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
   const [editing, setEditing] = useState<{ dayIndex: number; session: PlannedSession | null } | null>(null);
+  const [view, setView] = useState<CalendarView>('week');
+  const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
 
   const week = TRAINING_PLAN[weekIndex];
 
@@ -56,6 +88,57 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
     const unsub = subscribeToWeekOverrides(uid, week.weekNumber, setOverrides);
     return unsub;
   }, [uid, week.weekNumber]);
+
+  // --- Vue mois -------------------------------------------------------------
+  // La grille déborde sur les semaines voisines : on liste les jours affichés,
+  // puis les semaines du plan qu'ils recouvrent.
+  const monthDays = useMemo(() => {
+    if (view !== 'month') return [];
+    const first = startOfWeek(startOfMonth(monthCursor), { weekStartsOn: 1 });
+    const last = endOfWeek(endOfMonth(monthCursor), { weekStartsOn: 1 });
+    const days: Date[] = [];
+    for (let d = first; d <= last; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+      days.push(d);
+    }
+    return days;
+  }, [view, monthCursor]);
+
+  const monthWeekNumbers = useMemo(() => {
+    const numbers = new Set<number>();
+    for (const day of monthDays) {
+      const w = TRAINING_PLAN.find((p) => day >= p.startDate && day <= p.endDate);
+      if (w) numbers.add(w.weekNumber);
+    }
+    return [...numbers].sort((a, b) => a - b);
+  }, [monthDays]);
+
+  // Le mois couvre 5 à 6 semaines : on s'abonne à leurs personnalisations pour
+  // que déplacements et séances ajoutées apparaissent au bon jour.
+  const [monthOverrides, setMonthOverrides] = useState<Record<number, WeekPlanOverrides>>({});
+  const monthWeekKey = monthWeekNumbers.join(',');
+
+  useEffect(() => {
+    if (view !== 'month' || monthWeekNumbers.length === 0) return;
+    const unsubs = monthWeekNumbers.map((weekNumber) =>
+      subscribeToWeekOverrides(uid, weekNumber, (o) =>
+        setMonthOverrides((prev) => ({ ...prev, [weekNumber]: o })),
+      ),
+    );
+    return () => unsubs.forEach((unsub) => unsub());
+    // monthWeekKey résume la liste : évite de relancer les abonnements à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, view, monthWeekKey]);
+
+  /** Le programme d'un jour donné, personnalisations comprises. */
+  const dayPlanFor = (date: Date): DayPlan | undefined => {
+    const planWeek = TRAINING_PLAN.find((p) => date >= p.startDate && date <= p.endDate);
+    if (!planWeek) return undefined;
+    const applied = applyWeekOverrides(planWeek.days, monthOverrides[planWeek.weekNumber] ?? EMPTY_OVERRIDES);
+    const day = applied.find((d) => d.date.toDateString() === date.toDateString());
+    if (!day) return undefined;
+    const edits = (monthOverrides[planWeek.weekNumber] ?? EMPTY_OVERRIDES).edits;
+    return { ...day, sessions: day.sessions.filter((s) => !edits[s.id]?.skipped) };
+  };
 
   const effectiveDays = applyWeekOverrides(week.days, overrides);
   const hasOverrides =
@@ -82,6 +165,27 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
 
   return (
     <div className="glass-panel p-6">
+      {/* Sélecteur d'échelle : la semaine pour agir, le mois et le plan complet
+          pour voir venir jusqu'à la course. */}
+      <div className="flex bg-cyber-panel2 border border-cyber-line rounded-lg p-0.5 text-xs font-mono w-fit mb-4">
+        {VIEWS.map((v) => {
+          const Icon = v.icon;
+          return (
+            <button
+              key={v.id}
+              onClick={() => setView(v.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors ${
+                view === v.id ? 'bg-primary-600/25 text-primary-300' : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" /> {v.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {view === 'week' && (
+      <>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
         <div>
           <h2 className="text-xl font-bold text-slate-100 uppercase tracking-wide">
@@ -250,6 +354,171 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
           <span className="text-slate-400">Force: {week.volumeSummary.strengthSessions}x</span>
         </div>
       </div>
+      </>
+      )}
+
+      {/* ---------------------------- Vue mois ---------------------------- */}
+      {view === 'month' && (
+        <>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="text-xl font-bold text-slate-100 uppercase tracking-wide">
+              {format(monthCursor, 'MMMM yyyy', { locale: fr })}
+            </h2>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setMonthCursor((m) => addMonths(m, -1))}
+                className="p-2 hover:bg-cyber-panel2 border border-cyber-line rounded-lg"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setMonthCursor(startOfMonth(new Date()))}
+                className="px-3 py-2 text-sm font-medium hover:bg-cyber-panel2 border border-cyber-line rounded-lg font-mono"
+              >
+                Ce mois-ci
+              </button>
+              <button
+                onClick={() => setMonthCursor((m) => addMonths(m, 1))}
+                className="p-2 hover:bg-cyber-panel2 border border-cyber-line rounded-lg"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {DAY_LABELS_SHORT.map((label, i) => (
+              <div key={i} className="text-center text-[11px] text-slate-600 font-mono uppercase py-1">
+                {label}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {monthDays.map((date) => {
+              const plan = dayPlanFor(date);
+              const isToday = date.toDateString() === new Date().toDateString();
+              const inMonth = isSameMonth(date, monthCursor);
+              const isRace = date.toDateString() === RACE.date.toDateString();
+              return (
+                <button
+                  key={date.toISOString()}
+                  onClick={() => plan && setSelectedDay(plan)}
+                  className={`min-h-[4.5rem] border rounded-lg p-1.5 text-left transition-all ${
+                    isRace
+                      ? 'bg-amber-400/10 border-amber-400/60'
+                      : isToday
+                        ? 'bg-primary-400/5 border-primary-400/50'
+                        : 'bg-cyber-panel2 border-cyber-line hover:border-primary-400/40'
+                  } ${inMonth ? '' : 'opacity-40'}`}
+                >
+                  <div
+                    className={`text-[11px] font-mono mb-1 ${isToday ? 'text-primary-300' : 'text-slate-500'}`}
+                  >
+                    {format(date, 'd')}
+                    {isRace && <span className="ml-1 text-amber-300">🏁</span>}
+                  </div>
+                  <div className="space-y-0.5">
+                    {plan?.sessions.map((session) => (
+                      <div
+                        key={session.id}
+                        title={`${session.title} — ${summarizeEffort(
+                          session.discipline,
+                          session.targetDistanceKm,
+                          session.targetDurationMin,
+                        )}`}
+                        className={`text-[10px] px-1 py-0.5 rounded border truncate flex items-center gap-0.5 ${
+                          DISCIPLINE_STYLE[session.discipline]
+                        }`}
+                      >
+                        <span>{DISCIPLINE_ICON[session.discipline]}</span>
+                        <span className="truncate">
+                          {session.targetDistanceKm > 0
+                            ? `${session.targetDistanceKm}km`
+                            : `${session.targetDurationMin}min`}
+                        </span>
+                        {hasLoggedWorkout(date, session) && (
+                          <CheckCircle2 className="w-2.5 h-2.5 text-sport-bike shrink-0 ml-auto" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="text-xs text-slate-600 font-mono mt-3">
+            Clique un jour pour ouvrir le détail des séances · 🏁 = jour de course
+          </p>
+        </>
+      )}
+
+      {/* ------------------------ Vue plan complet ------------------------ */}
+      {view === 'plan' && (
+        <>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+            <h2 className="text-xl font-bold text-slate-100 uppercase tracking-wide">
+              Plan complet — 48 semaines
+            </h2>
+            <span className="text-sm text-primary-300 font-mono flex items-center gap-1.5">
+              <Flag className="w-4 h-4" /> {RACE.name} · {format(RACE.date, 'd MMMM yyyy', { locale: fr })}
+            </span>
+          </div>
+
+          <div className="space-y-1.5 max-h-[70vh] overflow-y-auto pr-1">
+            {TRAINING_PLAN.map((w) => {
+              const isCurrent = w.weekNumber === TRAINING_PLAN[currentWeekIndex].weekNumber;
+              const isPast = w.endDate < new Date();
+              return (
+                <button
+                  key={w.weekNumber}
+                  onClick={() => {
+                    setWeekIndex(w.weekNumber - 1);
+                    setView('week');
+                  }}
+                  className={`w-full text-left border rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 transition-all ${
+                    isCurrent
+                      ? 'bg-primary-400/10 border-primary-400/60 shadow-neon-cyan'
+                      : 'bg-cyber-panel2 border-cyber-line hover:border-primary-400/40'
+                  } ${isPast && !isCurrent ? 'opacity-50' : ''}`}
+                >
+                  <span
+                    className={`text-sm font-mono font-bold w-12 shrink-0 ${
+                      isCurrent ? 'text-primary-300' : 'text-slate-400'
+                    }`}
+                  >
+                    S{w.weekNumber}
+                  </span>
+                  <span className="text-xs text-slate-500 font-mono w-32 shrink-0">
+                    {format(w.startDate, 'd MMM', { locale: fr })} – {format(w.endDate, 'd MMM yy', { locale: fr })}
+                  </span>
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded border shrink-0 ${
+                      PHASE_STYLE[w.phase] ?? 'border-cyber-line text-slate-400'
+                    }`}
+                  >
+                    {w.phase}
+                  </span>
+                  <span className="text-xs font-mono text-slate-400 flex gap-3 flex-wrap">
+                    <span className="text-sport-swim">🏊 {w.volumeSummary.swimKm}km</span>
+                    <span className="text-sport-bike">🚴 {w.volumeSummary.bikeKm}km</span>
+                    <span className="text-sport-run">🏃 {w.volumeSummary.runKm}km</span>
+                    <span className="text-sport-strength">💪 {w.volumeSummary.strengthSessions}x</span>
+                  </span>
+                  {isCurrent && (
+                    <span className="text-[10px] text-primary-300 font-mono ml-auto shrink-0">◀ en cours</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="text-xs text-slate-600 font-mono mt-3">
+            Clique une semaine pour l'ouvrir en détail
+          </p>
+        </>
+      )}
 
       {selectedDay && (
         <WorkoutDetail uid={uid} day={selectedDay} workouts={workouts} onClose={() => setSelectedDay(null)} />

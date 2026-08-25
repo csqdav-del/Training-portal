@@ -1,8 +1,11 @@
 import { addDays, endOfDay, startOfWeek } from 'date-fns';
 import type {
   DayPlan,
+  DisciplineTarget,
   Phase,
   PlanDiscipline,
+  PlanProgress,
+  PlannedExercise,
   PlannedSession,
   TrainingZones,
   WeekPlan,
@@ -30,13 +33,6 @@ export const HR_ZONES: TrainingZones = {
   z3: { min: 130, max: 148, label: 'Z3 - Tempo' },
   z4: { min: 148, max: 167, label: 'Z4 - Seuil' },
   z5: { min: 167, max: 192, label: 'Z5 - VO2 Max' },
-};
-
-export const RACE_TARGETS: Record<PlanDiscipline, { current: number; target: number; unit: string; paceTarget: string }> = {
-  swim: { current: 1.3, target: 1.5, unit: 'km', paceTarget: '2:30-2:45/100m' },
-  bike: { current: 23.7, target: 40, unit: 'km', paceTarget: '24-26 km/h' },
-  run: { current: 3.22, target: 10, unit: 'km', paceTarget: '6:10/km (aspirationnel)' },
-  strength: { current: 0, target: 2, unit: 'x/sem', paceTarget: '—' },
 };
 
 export const PLAN_START = startOfWeek(new Date(2026, 7, 18), { weekStartsOn: 1 }); // lundi 17 août 2026
@@ -193,6 +189,7 @@ function makeSession(
   zone: ZoneKey,
   distanceKm: number,
   durationMin: number,
+  targetExercises?: PlannedExercise[],
 ): PlannedSession {
   const z = HR_ZONES[zone];
   return {
@@ -205,8 +202,38 @@ function makeSession(
     targetBpmMax: z.max,
     targetDistanceKm: Math.round(distanceKm * 100) / 100,
     targetDurationMin: Math.round(durationMin),
+    targetExercises,
   };
 }
+
+// ---- Musculation : blocs d'exercices prescrits ----
+// La muscu n'a ni zone FC ni distance : ce qui compte c'est la durée et les
+// mouvements. Ces listes servent de checklist et pré-remplissent la saisie.
+const STRENGTH_LOWER: PlannedExercise[] = [
+  { name: 'Squat', sets: 3, reps: '10', hint: 'Barre ou haltères, descente contrôlée' },
+  { name: 'Soulevé de terre', sets: 3, reps: '8', hint: 'Dos neutre, charge progressive' },
+  { name: 'Fentes', sets: 3, reps: '8/jambe' },
+  { name: 'Presse à cuisses', sets: 3, reps: '12', hint: 'Optionnel si squat déjà lourd' },
+  { name: 'Mollets', sets: 3, reps: '15' },
+  { name: 'Gainage', sets: 3, reps: '45s' },
+];
+
+const STRENGTH_UPPER: PlannedExercise[] = [
+  { name: 'Développé couché', sets: 3, reps: '8-10' },
+  { name: 'Rowing haltères', sets: 3, reps: '10/bras' },
+  { name: 'Développé militaire', sets: 3, reps: '8' },
+  { name: 'Tirage vertical', sets: 3, reps: '10' },
+  { name: 'Curl biceps', sets: 3, reps: '12' },
+  { name: 'Extensions triceps', sets: 3, reps: '12' },
+  { name: 'Gainage', sets: 3, reps: '45s' },
+];
+
+const STRENGTH_MAINTENANCE: PlannedExercise[] = [
+  { name: 'Squat', sets: 2, reps: '12', hint: 'Charge légère' },
+  { name: 'Fentes', sets: 2, reps: '10/jambe' },
+  { name: 'Pont fessier', sets: 2, reps: '15' },
+  { name: 'Gainage', sets: 2, reps: '30s' },
+];
 
 function buildWeek(weekNumber: number): WeekPlan {
   const { phase, label, focus } = phaseOf(weekNumber);
@@ -246,7 +273,16 @@ function buildWeek(weekNumber: number): WeekPlan {
       );
       if (forceFreq >= 1) {
         sessions.push(
-          makeSession(sid('strength-a'), 'strength', 'Force — Bas du corps', ['Squats 3x10', 'Deadlifts 3x8', 'Fentes 3x8/jambe', 'Core 5-10min'], 'z2', 0, 45),
+          makeSession(
+            sid('strength-a'),
+            'strength',
+            'Force — Bas du corps',
+            ['Échauffement 5-10min', 'Charges progressives, 90s de repos entre séries'],
+            'z2',
+            0,
+            45,
+            STRENGTH_LOWER,
+          ),
         );
       }
     }
@@ -272,11 +308,29 @@ function buildWeek(weekNumber: number): WeekPlan {
       );
       if (forceFreq >= 2) {
         sessions.push(
-          makeSession(sid('strength-b'), 'strength', 'Force — Haut du corps', ['Push-ups 3x10', 'Rowing haltères 3x10/bras', 'Développé 3x8', 'Core 5-10min'], 'z2', 0, 45),
+          makeSession(
+            sid('strength-b'),
+            'strength',
+            'Force — Haut du corps',
+            ['Échauffement 5-10min', 'Charges progressives, 90s de repos entre séries'],
+            'z2',
+            0,
+            45,
+            STRENGTH_UPPER,
+          ),
         );
       } else if (forceFreq === 1) {
         sessions.push(
-          makeSession(sid('strength-b'), 'strength', 'Force — Maintenance légère', ['Circuit léger 20-30min, jambes/glutes'], 'z2', 0, 30),
+          makeSession(
+            sid('strength-b'),
+            'strength',
+            'Force — Maintenance légère',
+            ['Circuit léger, jambes/glutes — reste facile'],
+            'z2',
+            0,
+            30,
+            STRENGTH_MAINTENANCE,
+          ),
         );
       }
     }
@@ -324,8 +378,57 @@ export function daysUntilRace(from: Date = new Date()): number {
   return Math.max(0, Math.ceil((RACE.date.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
-export function readiness(discipline: PlanDiscipline): number {
-  const t = RACE_TARGETS[discipline];
-  if (t.target === 0) return 100;
-  return Math.min(100, Math.round((t.current / t.target) * 100));
+/**
+ * Objectifs de la semaine, calculés à partir des séances réellement au programme
+ * (personnalisations comprises si on passe les jours déjà « overridés »).
+ * Pour la force, l'objectif est un nombre de séances, pas des kilomètres.
+ */
+export function targetsFromDays(days: DayPlan[]): Record<PlanDiscipline, DisciplineTarget> {
+  const targets: Record<PlanDiscipline, DisciplineTarget> = {
+    swim: { target: 0, unit: 'km', targetDurationMin: 0 },
+    bike: { target: 0, unit: 'km', targetDurationMin: 0 },
+    run: { target: 0, unit: 'km', targetDurationMin: 0 },
+    strength: { target: 0, unit: 'séances', targetDurationMin: 0 },
+  };
+
+  for (const day of days) {
+    for (const session of day.sessions) {
+      const t = targets[session.discipline];
+      if (!t) continue;
+      t.target += session.discipline === 'strength' ? 1 : session.targetDistanceKm;
+      t.targetDurationMin += session.targetDurationMin;
+    }
+  }
+
+  for (const key of Object.keys(targets) as PlanDiscipline[]) {
+    targets[key].target = Math.round(targets[key].target * 100) / 100;
+    targets[key].targetDurationMin = Math.round(targets[key].targetDurationMin);
+  }
+  return targets;
+}
+
+/**
+ * Avancement dans le plan : c'est ça la vraie mesure de préparation. On compte
+ * les jours écoulés depuis le lundi de la semaine 1 sur les 48 semaines du plan,
+ * plutôt qu'un ratio de distances qui ne dit rien de la forme réelle.
+ */
+export function planProgress(date: Date = new Date()): PlanProgress {
+  const totalDays = TOTAL_WEEKS * 7;
+  const elapsedDays = Math.floor((date.getTime() - PLAN_START.getTime()) / (1000 * 60 * 60 * 24));
+  const clamped = Math.max(0, Math.min(totalDays, elapsedDays));
+  const week = getWeekForDate(date);
+  const weekNumber = week?.weekNumber ?? (elapsedDays < 0 ? 1 : TOTAL_WEEKS);
+  const info = phaseOf(weekNumber);
+
+  return {
+    weekNumber,
+    totalWeeks: TOTAL_WEEKS,
+    pct: Math.round((clamped / totalDays) * 100),
+    weeksRemaining: Math.max(0, TOTAL_WEEKS - weekNumber),
+    daysUntilRace: daysUntilRace(date),
+    phase: info.phase,
+    phaseLabel: info.label,
+    focus: info.focus,
+    notStarted: elapsedDays < 0,
+  };
 }

@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { WeightEntry } from '../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -8,9 +18,10 @@ import { WEIGHT_GOAL_LBS, WEIGHT_START_LBS } from '../data/trainingPlan';
 interface WeightTrackerProps {
   entries: WeightEntry[];
   onAddEntry: (weight: number, date: Date, notes?: string) => void;
+  onDeleteEntry?: (entryId: string) => void;
 }
 
-export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProps) {
+export default function WeightTracker({ entries, onAddEntry, onDeleteEntry }: WeightTrackerProps) {
   const [showForm, setShowForm] = useState(false);
   const [weight, setWeight] = useState('');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -20,7 +31,10 @@ export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProp
     e.preventDefault();
     if (!weight) return;
 
-    onAddEntry(parseFloat(weight), new Date(date), notes);
+    // `new Date('2026-08-22')` serait interprété en UTC : à Montréal la pesée
+    // basculerait la veille. On construit donc la date en heure locale.
+    const [y, m, d] = date.split('-').map(Number);
+    onAddEntry(parseFloat(weight), new Date(y, m - 1, d, 12, 0, 0), notes);
     setWeight('');
     setNotes('');
     setShowForm(false);
@@ -34,6 +48,14 @@ export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProp
   const progressPercent = latestWeight
     ? Math.min(100, Math.max(0, ((WEIGHT_START_LBS - latestWeight) / (WEIGHT_START_LBS - WEIGHT_GOAL_LBS)) * 100))
     : 0;
+
+  // Le graphique se lit de la plus ancienne à la plus récente pesée.
+  const chartData = [...sortedEntries]
+    .reverse()
+    .map((entry) => ({
+      label: format(new Date(entry.date), 'd MMM', { locale: fr }),
+      poids: entry.weight,
+    }));
 
   return (
     <div className="glass-panel p-6">
@@ -59,6 +81,60 @@ export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProp
           <Plus className="w-5 h-5" />
           Ajouter
         </button>
+      </div>
+
+      {/* Courbe de poids — une barre de progression seule ne montre ni la tendance
+          ni les paliers ; le graphique garde les deux lisibles. */}
+      <div className="mb-6 bg-cyber-panel2 border border-cyber-line rounded-lg p-4">
+        <div className="flex items-baseline justify-between gap-2 mb-3">
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Courbe de poids</h3>
+          <span className="text-xs text-slate-600 font-mono">
+            {sortedEntries.length} pesée{sortedEntries.length > 1 ? 's' : ''}
+          </span>
+        </div>
+        {chartData.length === 0 ? (
+          <p className="text-sm text-slate-500 font-mono py-8 text-center">
+            Aucune pesée enregistrée — ajoute la première pour lancer la courbe
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={chartData} margin={{ top: 5, right: 8, bottom: 5, left: -12 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#20233a" />
+              <XAxis dataKey="label" stroke="#64748b" tick={{ fontSize: 11 }} />
+              <YAxis
+                domain={[
+                  (min: number) => Math.floor(Math.min(min, WEIGHT_GOAL_LBS) - 2),
+                  (max: number) => Math.ceil(max + 2),
+                ]}
+                stroke="#64748b"
+                tick={{ fontSize: 11 }}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: '#0c0c15',
+                  border: '1px solid #20233a',
+                  borderRadius: 8,
+                  color: '#e2e8f0',
+                }}
+                formatter={(value: number) => [`${value} lbs`, 'Poids']}
+              />
+              <ReferenceLine
+                y={WEIGHT_GOAL_LBS}
+                stroke="#34ff9d"
+                strokeDasharray="4 4"
+                label={{ value: `Objectif ${WEIGHT_GOAL_LBS}`, fill: '#34ff9d', fontSize: 10, position: 'insideBottomRight' }}
+              />
+              <Line
+                type="monotone"
+                dataKey="poids"
+                stroke="#22d3ee"
+                strokeWidth={2}
+                dot={{ r: 3, fill: '#22d3ee' }}
+                activeDot={{ r: 5 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Goal progress */}
@@ -138,20 +214,57 @@ export default function WeightTracker({ entries, onAddEntry }: WeightTrackerProp
         </form>
       )}
 
-      {/* Recent Entries */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wide">Historique récent</h3>
-        {sortedEntries.slice(0, 5).map((entry) => (
-          <div key={entry.id} className="flex items-center justify-between p-2 bg-cyber-panel2 border border-cyber-line rounded">
-            <div>
-              <div className="font-medium text-slate-100 font-mono">{entry.weight} lbs</div>
-              <div className="text-xs text-slate-500">
-                {format(new Date(entry.date), 'dd MMMM yyyy', { locale: fr })}
-                {entry.notes && ` • ${entry.notes}`}
-              </div>
-            </div>
+      {/* Historique complet — on ne tronque plus à 5 : une pesée saisie doit
+          rester visible, sinon on croit l'avoir perdue. */}
+      <div>
+        <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wide">
+          Historique complet ({sortedEntries.length})
+        </h3>
+        {sortedEntries.length === 0 ? (
+          <p className="text-sm text-slate-500 font-mono">Aucune pesée pour l'instant</p>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+            {sortedEntries.map((entry, i) => {
+              // Écart avec la pesée précédente (la suivante dans l'ordre décroissant).
+              const previous = sortedEntries[i + 1];
+              const diff = previous ? entry.weight - previous.weight : null;
+              return (
+                <div
+                  key={entry.id}
+                  className="flex items-center justify-between gap-3 p-2 bg-cyber-panel2 border border-cyber-line rounded"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-100 font-mono flex items-baseline gap-2">
+                      {entry.weight} lbs
+                      {diff !== null && diff !== 0 && (
+                        <span className={`text-xs ${diff < 0 ? 'text-sport-bike' : 'text-sport-run'}`}>
+                          {diff > 0 ? '+' : ''}
+                          {diff.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {format(new Date(entry.date), 'dd MMMM yyyy', { locale: fr })}
+                      {entry.source === 'health_connect' && ' • balance connectée'}
+                      {entry.notes && ` • ${entry.notes}`}
+                    </div>
+                  </div>
+                  {onDeleteEntry && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Supprimer la pesée de ${entry.weight} lbs ?`)) onDeleteEntry(entry.id);
+                      }}
+                      title="Supprimer cette pesée"
+                      className="text-slate-600 hover:text-sport-run shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

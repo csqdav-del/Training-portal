@@ -1,16 +1,19 @@
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Discipline, StrengthExercise, Workout } from '../types';
+import { parseFirestoreDate, parseFirestoreDateOr } from './firestoreDate';
 
 export function subscribeToWorkouts(uid: string, callback: (workouts: Workout[]) => void): () => void {
-  const q = query(collection(db, 'users', uid, 'workouts'), orderBy('date', 'desc'));
-  return onSnapshot(q, (snap) => {
+  // Comme pour les pesées : on trie côté client pour ne perdre aucune activité
+  // dont le champ `date` aurait un type différent des autres.
+  const ref = collection(db, 'users', uid, 'workouts');
+  return onSnapshot(ref, (snap) => {
     const workouts: Workout[] = snap.docs.map((docSnap) => {
       const data = docSnap.data();
       return {
         id: docSnap.id,
         userId: uid,
-        date: new Date(data.date),
+        date: parseFirestoreDateOr(data.date, new Date(0)),
         type: (data.type ?? 'other') as Discipline,
         duration: data.duration ?? 0,
         distance: data.distance ?? undefined,
@@ -19,7 +22,7 @@ export function subscribeToWorkouts(uid: string, callback: (workouts: Workout[])
         notes: data.notes ?? undefined,
         source: data.source ?? 'manual',
         externalId: data.externalId ?? undefined,
-        syncedAt: data.syncedAt ? new Date(data.syncedAt) : new Date(),
+        syncedAt: parseFirestoreDate(data.syncedAt) ?? new Date(),
         title: data.title ?? undefined,
         rpe: data.rpe ?? undefined,
         exercises: (data.exercises as StrengthExercise[] | null) ?? undefined,
@@ -50,6 +53,7 @@ export function subscribeToWorkouts(uid: string, callback: (workouts: Workout[])
         stravaUrl: data.stravaUrl ?? undefined,
       };
     });
+    workouts.sort((a, b) => b.date.getTime() - a.date.getTime());
     callback(workouts);
   });
 }

@@ -7,11 +7,11 @@ import Calendar from './components/Calendar';
 import WeightTracker from './components/WeightTracker';
 import VapingCounter from './components/VapingCounter';
 import NutritionTracker from './components/NutritionTracker';
-import { Workout, WeightEntry, WeeklyStats, DailyMetric } from './types';
+import { Workout, WeightEntry, WeeklyStats, DailyMetric, Discipline } from './types';
 import { HR_ZONES } from './data/trainingPlan';
 import { auth, signInWithGoogle, signOutUser } from './firebase';
 import { subscribeToWorkouts } from './lib/firestoreWorkouts';
-import { subscribeToWeights, addWeightEntry } from './lib/firestoreWeights';
+import { subscribeToWeights, addWeightEntry, deleteWeightEntry } from './lib/firestoreWeights';
 import { subscribeToDailyMetrics, findMetricForDate } from './lib/firestoreDailyMetrics';
 // Aliasé : `setVapingStart` est déjà le nom du setter d'état local plus bas.
 import { subscribeToVaping, setVapingStart as saveVapingStart, resetVapingStreak } from './lib/vaping';
@@ -179,17 +179,37 @@ export default function App() {
     return d >= weekStart && d <= weekEnd;
   });
 
-  const weeklyStats: WeeklyStats = {
-    swimDistance: thisWeekWorkouts.filter((w) => w.type === 'swim').reduce((sum, w) => sum + (w.distance || 0), 0),
-    swimDuration: thisWeekWorkouts.filter((w) => w.type === 'swim').reduce((sum, w) => sum + w.duration, 0),
-    bikeDistance: thisWeekWorkouts.filter((w) => w.type === 'bike').reduce((sum, w) => sum + (w.distance || 0), 0),
-    bikeDuration: thisWeekWorkouts.filter((w) => w.type === 'bike').reduce((sum, w) => sum + w.duration, 0),
-    runDistance: thisWeekWorkouts.filter((w) => w.type === 'run').reduce((sum, w) => sum + (w.distance || 0), 0),
-    runDuration: thisWeekWorkouts.filter((w) => w.type === 'run').reduce((sum, w) => sum + w.duration, 0),
-    strengthSessions: thisWeekWorkouts.filter((w) => w.type === 'strength').length,
-    totalCalories: thisWeekWorkouts.reduce((sum, w) => sum + (w.calories || 0), 0),
-    totalWorkouts: thisWeekWorkouts.length,
+  // Un seul calcul pour la semaine et pour le cumul : le tableau de bord bascule
+  // entre les deux, et toutes les disciplines comptent (marche comprise) — sinon
+  // une sortie à pied n'apparaît nulle part dans les totaux.
+  const buildStats = (list: Workout[]): WeeklyStats => {
+    const sum = (type: Discipline, field: 'distance' | 'duration') =>
+      list
+        .filter((w) => w.type === type)
+        .reduce((acc, w) => acc + (field === 'distance' ? w.distance || 0 : w.duration || 0), 0);
+
+    return {
+      swimDistance: sum('swim', 'distance'),
+      swimDuration: sum('swim', 'duration'),
+      bikeDistance: sum('bike', 'distance'),
+      bikeDuration: sum('bike', 'duration'),
+      runDistance: sum('run', 'distance'),
+      runDuration: sum('run', 'duration'),
+      strengthSessions: list.filter((w) => w.type === 'strength').length,
+      strengthDuration: sum('strength', 'duration'),
+      walkDistance: sum('walk', 'distance'),
+      walkDuration: sum('walk', 'duration'),
+      otherDistance: sum('other', 'distance'),
+      otherDuration: sum('other', 'duration'),
+      totalCalories: list.reduce((acc, w) => acc + (w.calories || 0), 0),
+      totalWorkouts: list.length,
+      totalDuration: list.reduce((acc, w) => acc + (w.duration || 0), 0),
+      totalDistance: list.reduce((acc, w) => acc + (w.distance || 0), 0),
+    };
   };
+
+  const weeklyStats = buildStats(thisWeekWorkouts);
+  const allTimeStats = buildStats(workouts);
 
   // Weight data for chart
   const weightData = weights
@@ -202,6 +222,11 @@ export default function App() {
   const handleAddWeight = (weight: number, date: Date, notes?: string) => {
     if (!user) return;
     addWeightEntry(user.uid, weight, date, notes).catch((err) => console.error('addWeightEntry failed', err));
+  };
+
+  const handleDeleteWeight = (entryId: string) => {
+    if (!user) return;
+    deleteWeightEntry(user.uid, entryId).catch((err) => console.error('deleteWeightEntry failed', err));
   };
 
   const tabs = [
@@ -347,6 +372,7 @@ export default function App() {
           <Dashboard
             uid={user.uid}
             weeklyStats={weeklyStats}
+            allTimeStats={allTimeStats}
             zones={HR_ZONES}
             weightData={weightData}
             workouts={workouts}
@@ -371,7 +397,7 @@ export default function App() {
         )}
 
         {activeTab === 'weight' && (
-          <WeightTracker entries={weights} onAddEntry={handleAddWeight} />
+          <WeightTracker entries={weights} onAddEntry={handleAddWeight} onDeleteEntry={handleDeleteWeight} />
         )}
 
         {activeTab === 'nutrition' && (

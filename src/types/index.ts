@@ -121,14 +121,31 @@ export interface WeeklyStats {
   runDistance: number;
   runDuration: number;
   strengthSessions: number;
+  strengthDuration: number;
+  walkDistance: number;
+  walkDuration: number;
+  otherDistance: number;
+  otherDuration: number;
   totalCalories: number;
   totalWorkouts: number;
+  totalDuration: number;
+  /** Distance toutes disciplines confondues (marche et « autre » compris). */
+  totalDistance: number;
 }
 
 export type Discipline = 'swim' | 'bike' | 'run' | 'strength' | 'walk' | 'other';
 export type PlanDiscipline = 'swim' | 'bike' | 'run' | 'strength';
 export type ZoneKey = 'z1' | 'z2' | 'z3' | 'z4' | 'z5';
 export type Phase = 'Base' | 'Build' | 'Peak' | 'Taper';
+
+/** Un exercice prescrit par le plan pour une séance de musculation. */
+export interface PlannedExercise {
+  name: string;
+  sets: number;
+  reps: string; // « 10 », « 8-12 », « 30s »...
+  /** Consigne courte (tempo, variante, matériel). */
+  hint?: string;
+}
 
 export interface PlannedSession {
   id: string;
@@ -140,6 +157,35 @@ export interface PlannedSession {
   targetBpmMax: number;
   targetDistanceKm: number;
   targetDurationMin: number;
+  /**
+   * Musculation seulement : les mouvements à faire. Les cibles de zone, de BPM et
+   * de distance n'ont aucun sens en salle — l'UI les masque quand ce champ est là.
+   */
+  targetExercises?: PlannedExercise[];
+}
+
+/** Objectif hebdomadaire d'une discipline, affiché au tableau de bord. */
+export interface DisciplineTarget {
+  /** Volume visé cette semaine : km (swim/bike/run) ou nombre de séances (force). */
+  target: number;
+  unit: 'km' | 'séances';
+  /** Durée totale visée sur la semaine, en minutes. */
+  targetDurationMin: number;
+}
+
+/** Où on en est dans le plan de 48 semaines. */
+export interface PlanProgress {
+  weekNumber: number;
+  totalWeeks: number;
+  /** % du plan écoulé, jours de la semaine en cours inclus. */
+  pct: number;
+  weeksRemaining: number;
+  daysUntilRace: number;
+  phase: Phase;
+  phaseLabel: string;
+  focus: string;
+  /** true avant le tout début du plan. */
+  notStarted: boolean;
 }
 
 export interface DayPlan {

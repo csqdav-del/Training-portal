@@ -4,6 +4,7 @@ import { X, Plus, Trash2, Dumbbell } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Discipline, PlannedSession, StrengthExercise, Workout } from '../types';
+import { formatDelta, formatDuration, formatPace, paceLabel } from '../lib/format';
 import {
   COMMON_EXERCISES,
   addManualWorkout,
@@ -54,6 +55,25 @@ function emptyExercise(): StrengthExercise {
   return { name: '', sets: undefined, reps: undefined, weightLbs: undefined };
 }
 
+/**
+ * Pré-remplit les lignes d'exercices à partir de ce que le plan prescrit : il ne
+ * reste plus qu'à corriger et à taper les charges, qui sont justement ce qu'on
+ * veut voir progresser. Les reps du plan sont du texte (« 8/jambe », « 45s ») —
+ * on en extrait le premier nombre, et un champ vide vaut mieux qu'un faux chiffre.
+ */
+function plannedToExercises(session: PlannedSession | null | undefined): StrengthExercise[] {
+  if (!session?.targetExercises?.length) return [emptyExercise()];
+  return session.targetExercises.map((ex) => {
+    const reps = /^\d+/.exec(ex.reps)?.[0];
+    return {
+      name: ex.name,
+      sets: ex.sets,
+      reps: reps ? Number(reps) : undefined,
+      weightLbs: undefined,
+    };
+  });
+}
+
 function toNumber(value: string): number | undefined {
   if (value.trim() === '') return undefined;
   const n = Number(value);
@@ -94,7 +114,7 @@ export default function LogWorkoutModal({
   const [rpe, setRpe] = useState(workout?.rpe != null ? String(workout.rpe) : '');
   const [notes, setNotes] = useState(workout?.notes ?? '');
   const [exercises, setExercises] = useState<StrengthExercise[]>(
-    workout?.exercises?.length ? workout.exercises : [emptyExercise()],
+    workout?.exercises?.length ? workout.exercises : plannedToExercises(plannedSession),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +131,24 @@ export default function LogWorkoutModal({
     (sum, e) => sum + (e.sets ?? 0) * (e.reps ?? 0) * (e.weightLbs ?? 0),
     0,
   );
+
+  /**
+   * Comparaison réel / plan, recalculée à chaque frappe. Le but n'est pas de
+   * coller au plan mais de savoir de combien on s'en écarte : « 2.5 km en 45min
+   * au lieu de 1.75 km en 26min » est une information, pas un échec.
+   */
+  const enteredDistance = toNumber(distance);
+  const enteredDuration = toNumber(duration);
+  const plannedDistance = plannedSession && plannedSession.targetDistanceKm > 0 ? plannedSession.targetDistanceKm : null;
+  const plannedDuration = plannedSession && plannedSession.targetDurationMin > 0 ? plannedSession.targetDurationMin : null;
+  const plannedPace = plannedSession
+    ? formatPace(plannedSession.discipline, plannedDistance, plannedDuration)
+    : null;
+  const actualPace = formatPace(type, enteredDistance, enteredDuration);
+  const distanceDelta =
+    plannedDistance != null && enteredDistance != null ? enteredDistance - plannedDistance : null;
+  const durationDelta =
+    plannedDuration != null && enteredDuration != null ? enteredDuration - plannedDuration : null;
 
   const updateExercise = (index: number, patch: Partial<StrengthExercise>) =>
     setExercises((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -269,6 +307,18 @@ export default function LogWorkoutModal({
             </div>
           </div>
 
+          {/* Rappel de la cible : on saisit le réalisé en le voyant face au plan. */}
+          {plannedSession && (plannedDistance != null || plannedDuration != null) && (
+            <div className="bg-cyber-panel2 border border-cyber-line rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
+              <span className="text-slate-500 uppercase tracking-wide">Prévu au plan</span>
+              {plannedDistance != null && <span className="text-slate-300">{plannedDistance} km</span>}
+              {plannedDuration != null && (
+                <span className="text-slate-300">{formatDuration(plannedDuration)}</span>
+              )}
+              {plannedPace && <span className="text-slate-300">{plannedPace}</span>}
+            </div>
+          )}
+
           <div className={`grid gap-3 ${showDistance ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <div>
               <label className={labelClass}>Durée (min) *</label>
@@ -280,6 +330,15 @@ export default function LogWorkoutModal({
                 onChange={(e) => setDuration(e.target.value)}
                 className={inputClass}
               />
+              {durationDelta !== null && (
+                <p
+                  className={`text-[11px] font-mono mt-1 ${
+                    durationDelta >= 0 ? 'text-sport-bike' : 'text-amber-300'
+                  }`}
+                >
+                  {formatDelta(durationDelta, 'min')} vs plan
+                </p>
+              )}
             </div>
             {showDistance && (
               <div>
@@ -293,9 +352,25 @@ export default function LogWorkoutModal({
                   onChange={(e) => setDistance(e.target.value)}
                   className={inputClass}
                 />
+                {distanceDelta !== null && (
+                  <p
+                    className={`text-[11px] font-mono mt-1 ${
+                      distanceDelta >= 0 ? 'text-sport-bike' : 'text-amber-300'
+                    }`}
+                  >
+                    {formatDelta(distanceDelta, 'km', 2)} vs plan
+                  </p>
+                )}
               </div>
             )}
           </div>
+
+          {actualPace && (
+            <p className="text-xs text-slate-500 font-mono -mt-1">
+              {paceLabel(type)} : <span className="text-primary-300">{actualPace}</span>
+              {plannedPace ? ` · visé ${plannedPace}` : ''}
+            </p>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div>

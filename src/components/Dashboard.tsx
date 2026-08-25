@@ -16,10 +16,13 @@ import {
   Moon,
   Footprints,
   Smartphone,
+  Target,
+  Dumbbell,
 } from 'lucide-react';
 import { WeeklyStats, TrainingZones, PlanDiscipline, Discipline, PlannedSession, Workout, DailyMetric } from '../types';
-import { RACE, RACE_TARGETS, daysUntilRace, readiness, getWeekForDate, getDayPlan } from '../data/trainingPlan';
+import { RACE, getWeekForDate, getDayPlan, planProgress, targetsFromDays } from '../data/trainingPlan';
 import { isManualWorkout } from '../lib/manualWorkout';
+import { formatDuration, summarizeEffort } from '../lib/format';
 import WorkoutDetail from './WorkoutDetail';
 import ActivityDetail from './ActivityDetail';
 import LogWorkoutModal from './LogWorkoutModal';
@@ -33,6 +36,8 @@ import {
 interface DashboardProps {
   uid: string;
   weeklyStats: WeeklyStats;
+  /** Mêmes compteurs, mais sur tout l'historique — le tableau bascule entre les deux. */
+  allTimeStats: WeeklyStats;
   zones: TrainingZones;
   weightData: { date: string; weight: number }[];
   workouts: Workout[];
@@ -86,6 +91,7 @@ const ACTIVITY_ICON: Record<Discipline, string> = {
 export default function Dashboard({
   uid,
   weeklyStats,
+  allTimeStats,
   zones,
   weightData,
   workouts,
@@ -104,6 +110,8 @@ export default function Dashboard({
   onSyncHealth,
 }: DashboardProps) {
   const [showToday, setShowToday] = useState(false);
+  // Les totaux affichent au choix la semaine en cours ou tout l'historique.
+  const [period, setPeriod] = useState<'week' | 'all'>('week');
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [weekOverrides, setWeekOverrides] = useState<WeekPlanOverrides>(EMPTY_OVERRIDES);
 
@@ -125,11 +133,16 @@ export default function Dashboard({
   const today = new Date();
   const currentWeek = getWeekForDate(today);
   // On applique les personnalisations enregistrées pour que le tableau de bord
-  // affiche le même plan que le calendrier.
+  // affiche le même plan que le calendrier — objectifs hebdo compris.
+  const effectiveDays = currentWeek ? applyWeekOverrides(currentWeek.days, weekOverrides) : [];
+  // Les séances sautées ne comptent plus dans l'objectif de la semaine.
+  const plannedDays = effectiveDays.map((d) => ({
+    ...d,
+    sessions: d.sessions.filter((sess) => !weekOverrides.edits[sess.id]?.skipped),
+  }));
+  const weekTargets = targetsFromDays(plannedDays);
   const rawTodayPlan = currentWeek
-    ? applyWeekOverrides(currentWeek.days, weekOverrides).find(
-        (d) => d.date.toDateString() === today.toDateString(),
-      )
+    ? effectiveDays.find((d) => d.date.toDateString() === today.toDateString())
     : getDayPlan(today);
   // Les séances marquées « sautée » disparaissent du programme du jour.
   const todayPlan = rawTodayPlan
@@ -148,43 +161,68 @@ export default function Dashboard({
     });
   };
 
-  const raceDays = daysUntilRace(today);
-  const overallReadiness = Math.round((readiness('swim') + readiness('bike') + readiness('run')) / 3);
+  const progress = planProgress(today);
+  const raceDays = progress.daysUntilRace;
 
+  /**
+   * Une carte par discipline : ce qui a été fait cette semaine, l'objectif du
+   * plan, et le pourcentage d'atteinte. C'est ce % qui donne envie de boucler
+   * la semaine — d'où la barre sous chaque carte.
+   */
   const stats = [
     {
+      key: 'swim' as PlanDiscipline,
       label: 'Natation',
-      distance: weeklyStats.swimDistance.toFixed(2),
-      duration: weeklyStats.swimDuration,
+      done: weeklyStats.swimDistance,
+      doneDuration: weeklyStats.swimDuration,
+      unit: 'km',
+      decimals: 2,
       icon: Droplet,
       color: 'text-sport-swim',
+      bar: 'bg-sport-swim',
       glow: 'hover:shadow-neon-cyan hover:border-sport-swim/50',
     },
     {
+      key: 'bike' as PlanDiscipline,
       label: 'Vélo',
-      distance: weeklyStats.bikeDistance.toFixed(2),
-      duration: weeklyStats.bikeDuration,
+      done: weeklyStats.bikeDistance,
+      doneDuration: weeklyStats.bikeDuration,
+      unit: 'km',
+      decimals: 1,
       icon: Bike,
       color: 'text-sport-bike',
+      bar: 'bg-sport-bike',
       glow: 'hover:shadow-neon-green hover:border-sport-bike/50',
     },
     {
+      key: 'run' as PlanDiscipline,
       label: 'Course',
-      distance: weeklyStats.runDistance.toFixed(2),
-      duration: weeklyStats.runDuration,
+      done: weeklyStats.runDistance,
+      doneDuration: weeklyStats.runDuration,
+      unit: 'km',
+      decimals: 2,
       icon: Wind,
       color: 'text-sport-run',
+      bar: 'bg-sport-run',
       glow: 'hover:shadow-neon-pink hover:border-sport-run/50',
     },
     {
+      key: 'strength' as PlanDiscipline,
       label: 'Musculation',
-      distance: `${weeklyStats.strengthSessions}`,
-      duration: 0,
+      done: weeklyStats.strengthSessions,
+      doneDuration: weeklyStats.strengthDuration,
+      unit: 'séances',
+      decimals: 0,
       icon: Zap,
       color: 'text-sport-strength',
+      bar: 'bg-sport-strength',
       glow: 'hover:shadow-neon-purple hover:border-sport-strength/50',
     },
   ];
+
+  // Totaux affichés : semaine en cours ou historique complet.
+  const shown = period === 'week' ? weeklyStats : allTimeStats;
+  const periodLabel = period === 'week' ? 'cette semaine' : 'depuis le début';
 
   return (
     <div className="space-y-6">
@@ -197,13 +235,16 @@ export default function Dashboard({
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-slate-500 uppercase tracking-widest font-mono">Prêt à {overallReadiness}%</p>
+          <p className="text-xs text-slate-500 uppercase tracking-widest font-mono">
+            Plan : semaine {progress.weekNumber}/{progress.totalWeeks} · {progress.pct}%
+          </p>
           <div className="w-40 bg-cyber-bg rounded-full h-2 border border-cyber-line overflow-hidden mt-1">
             <div
-              className="h-full bg-gradient-to-r from-sport-run via-sport-strength to-primary-400 shadow-neon-cyan"
-              style={{ width: `${overallReadiness}%` }}
+              className="h-full bg-gradient-to-r from-sport-run via-sport-strength to-primary-400 shadow-neon-cyan transition-all duration-500"
+              style={{ width: `${progress.pct}%` }}
             />
           </div>
+          <p className="text-[11px] text-slate-600 font-mono mt-1">{progress.phaseLabel}</p>
         </div>
       </div>
 
@@ -345,9 +386,19 @@ export default function Dashboard({
                   <span className="text-xl">{meta.icon}</span>
                   <div className="min-w-0">
                     <div className={`text-sm font-bold ${meta.color}`}>{s.title}</div>
-                    <div className="text-xs text-slate-500 font-mono">
-                      {s.targetZone.toUpperCase()} · {s.targetBpmMin}-{s.targetBpmMax} bpm ·{' '}
-                      {s.targetDistanceKm > 0 ? `${s.targetDistanceKm}km` : `${s.targetDurationMin}min`}
+                    {/* En salle, ni zone FC ni distance : la durée et les mouvements suffisent. */}
+                    <div className="text-xs text-slate-500 font-mono flex items-center gap-1">
+                      {s.targetExercises ? (
+                        <>
+                          <Dumbbell className="w-3 h-3" />
+                          {formatDuration(s.targetDurationMin)} · {s.targetExercises.length} exercices
+                        </>
+                      ) : (
+                        <>
+                          {s.targetZone.toUpperCase()} · {s.targetBpmMin}-{s.targetBpmMax} bpm ·{' '}
+                          {summarizeEffort(s.discipline, s.targetDistanceKm, s.targetDurationMin)}
+                        </>
+                      )}
                     </div>
                   </div>
                   {done ? (
@@ -378,39 +429,115 @@ export default function Dashboard({
         </button>
       </div>
 
-      {/* Header Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, idx) => {
-          const Icon = stat.icon;
-          return (
-            <div key={idx} className={`glass-panel p-4 transition-all ${stat.glow}`}>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-slate-400">{stat.label}</h3>
-                <Icon className={`w-5 h-5 ${stat.color}`} />
+      {/* Objectifs de la semaine, par discipline */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Target className="w-4 h-4 text-primary-300" />
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">
+            Objectifs de la semaine {currentWeek ? `— S${currentWeek.weekNumber}` : ''}
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {stats.map((stat) => {
+            const Icon = stat.icon;
+            const target = weekTargets[stat.key];
+            const goal = target.target;
+            const pct = goal > 0 ? Math.min(100, Math.round((stat.done / goal) * 100)) : null;
+            const reached = pct !== null && pct >= 100;
+            return (
+              <div key={stat.key} className={`glass-panel p-4 transition-all ${stat.glow}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-slate-400">{stat.label}</h3>
+                  <Icon className={`w-5 h-5 ${stat.color}`} />
+                </div>
+
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold text-slate-100 font-mono">
+                    {stat.done.toFixed(stat.decimals)}
+                  </span>
+                  {goal > 0 && (
+                    <span className="text-sm text-slate-500 font-mono">
+                      / {goal.toFixed(stat.decimals)} {stat.unit}
+                    </span>
+                  )}
+                  {goal === 0 && <span className="text-sm text-slate-500 font-mono">{stat.unit}</span>}
+                </div>
+
+                {pct !== null ? (
+                  <>
+                    <div className="w-full bg-cyber-bg rounded-full h-2 border border-cyber-line overflow-hidden mt-2">
+                      <div
+                        className={`h-full ${stat.bar} transition-all duration-500`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-xs mt-1.5 font-mono">
+                      <span className={reached ? 'text-sport-bike' : stat.color}>
+                        {reached ? 'Objectif atteint 🎯' : `${pct}% de l'objectif`}
+                      </span>
+                      <span className="text-slate-500">
+                        {formatDuration(stat.doneDuration)}
+                        {target.targetDurationMin > 0 ? ` / ${formatDuration(target.targetDurationMin)}` : ''}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-slate-500 mt-2 font-mono">
+                    Rien de prévu cette semaine · {formatDuration(stat.doneDuration)} fait
+                  </div>
+                )}
               </div>
-              <div className="text-2xl font-bold text-slate-100 font-mono">{stat.distance}</div>
-              <div className="text-xs text-slate-500 mt-1 font-mono">{stat.duration} min</div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* Race Readiness */}
+      {/* Progression du plan — remplace l'ancien « Race Readiness », qui comparait
+          des distances figées et ne disait rien de l'état de forme réel. */}
       <div className="glass-panel p-4">
-        <h3 className="text-lg font-semibold text-slate-100 mb-4 uppercase tracking-wide">Race Readiness</h3>
-        <div className="space-y-4">
-          {(['swim', 'bike', 'run'] as PlanDiscipline[]).map((d) => {
-            const meta = DISCIPLINE_META[d];
-            const t = RACE_TARGETS[d];
-            const pct = readiness(d);
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+          <h3 className="text-lg font-semibold text-slate-100 uppercase tracking-wide">Progression du plan</h3>
+          <span className="text-xs text-slate-500 font-mono">
+            {progress.notStarted
+              ? 'Le plan démarre bientôt'
+              : `${progress.weeksRemaining} semaines restantes · J-${raceDays}`}
+          </span>
+        </div>
+
+        <div className="w-full bg-cyber-bg rounded-full h-3 border border-cyber-line overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-primary-500 via-sport-strength to-sport-run transition-all duration-500"
+            style={{ width: `${progress.pct}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-xs text-slate-500 mt-1.5 font-mono">
+          <span>S1</span>
+          <span className="text-primary-300">
+            Semaine {progress.weekNumber}/{progress.totalWeeks} · {progress.pct}%
+          </span>
+          <span>S{progress.totalWeeks}</span>
+        </div>
+
+        <div className="mt-4 bg-cyber-panel2 border border-cyber-line rounded-lg p-3">
+          <div className="text-xs text-primary-300 font-mono uppercase tracking-wide">{progress.phaseLabel}</div>
+          <div className="text-sm text-slate-400 mt-0.5">{progress.focus}</div>
+        </div>
+
+        {/* Volume de la semaine face au programme */}
+        <div className="space-y-3 mt-4">
+          {stats.map((stat) => {
+            const meta = DISCIPLINE_META[stat.key];
+            const goal = weekTargets[stat.key].target;
+            const pct = goal > 0 ? Math.min(100, Math.round((stat.done / goal) * 100)) : 0;
             return (
-              <div key={d}>
+              <div key={stat.key}>
                 <div className="flex justify-between text-sm mb-1 font-mono">
                   <span className={`font-medium ${meta.color}`}>
-                    {meta.icon} {meta.label} — {pct}%
+                    {meta.icon} {meta.label}
                   </span>
                   <span className="text-slate-500">
-                    {t.current} / {t.target} {t.unit} · cible {t.paceTarget}
+                    {stat.done.toFixed(stat.decimals)} / {goal.toFixed(stat.decimals)} {stat.unit}
+                    {goal > 0 ? ` · ${pct}%` : ''}
                   </span>
                 </div>
                 <div className="w-full bg-cyber-bg rounded-full h-2.5 border border-cyber-line overflow-hidden">
@@ -422,22 +549,57 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* Summary Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-panel p-4">
-          <div className="text-sm text-slate-500 mb-1">Total Entraînements</div>
-          <div className="text-3xl font-bold text-slate-100 font-mono">{weeklyStats.totalWorkouts}</div>
-        </div>
-        <div className="glass-panel p-4">
-          <div className="text-sm text-slate-500 mb-1 flex items-center gap-1">
-            <Flame className="w-4 h-4 text-sport-run" /> Calories (semaine)
+      {/* Totaux — toutes disciplines confondues, marche comprise. La période est
+          explicite : les compteurs étaient hebdomadaires sans le dire. */}
+      <div>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Totaux ({periodLabel})</h3>
+          <div className="flex bg-cyber-panel2 border border-cyber-line rounded-lg p-0.5 text-xs font-mono">
+            {[
+              { id: 'week' as const, label: 'Semaine' },
+              { id: 'all' as const, label: 'Depuis le début' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setPeriod(opt.id)}
+                className={`px-3 py-1 rounded-md transition-colors ${
+                  period === opt.id ? 'bg-primary-600/25 text-primary-300' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
-          <div className="text-3xl font-bold text-slate-100 font-mono">{weeklyStats.totalCalories}</div>
         </div>
-        <div className="glass-panel p-4">
-          <div className="text-sm text-slate-500 mb-1">Volume Total (km)</div>
-          <div className="text-3xl font-bold text-slate-100 font-mono">
-            {(weeklyStats.swimDistance + weeklyStats.bikeDistance + weeklyStats.runDistance).toFixed(1)}
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="glass-panel p-4">
+            <div className="text-sm text-slate-500 mb-1">Entraînements</div>
+            <div className="text-3xl font-bold text-slate-100 font-mono">{shown.totalWorkouts}</div>
+            <div className="text-xs text-slate-600 font-mono mt-1">{periodLabel}</div>
+          </div>
+          <div className="glass-panel p-4">
+            <div className="text-sm text-slate-500 mb-1 flex items-center gap-1">
+              <Flame className="w-4 h-4 text-sport-run" /> Calories
+            </div>
+            <div className="text-3xl font-bold text-slate-100 font-mono">
+              {shown.totalCalories.toLocaleString('fr-CA')}
+            </div>
+            <div className="text-xs text-slate-600 font-mono mt-1">{periodLabel}</div>
+          </div>
+          <div className="glass-panel p-4">
+            <div className="text-sm text-slate-500 mb-1">Volume total</div>
+            <div className="text-3xl font-bold text-slate-100 font-mono">{shown.totalDistance.toFixed(1)}</div>
+            <div className="text-xs text-slate-600 font-mono mt-1">
+              km · dont marche {shown.walkDistance.toFixed(1)} km
+            </div>
+          </div>
+          <div className="glass-panel p-4">
+            <div className="text-sm text-slate-500 mb-1">Temps total</div>
+            <div className="text-3xl font-bold text-slate-100 font-mono">{formatDuration(shown.totalDuration)}</div>
+            <div className="text-xs text-slate-600 font-mono mt-1">
+              muscu {shown.strengthSessions}x · marche {formatDuration(shown.walkDuration)}
+            </div>
           </div>
         </div>
       </div>
@@ -492,8 +654,8 @@ export default function Dashboard({
                       <div className="min-w-0">
                         <div className="text-sm text-slate-200 truncate">{w.title || w.notes || w.type}</div>
                         <div className="text-xs text-slate-500 font-mono">
-                          {new Date(w.date).toLocaleDateString('fr-FR')} · {w.distance ? `${w.distance}km · ` : ''}
-                          {w.duration}min
+                          {new Date(w.date).toLocaleDateString('fr-FR')} ·{' '}
+                          {summarizeEffort(w.type, w.distance, w.duration)}
                           {w.exercises?.length ? ` · ${w.exercises.length} exos` : ''}
                           {w.elevationGain ? ` · ${w.elevationGain}m D+` : ''}
                           {w.avgWatts ? ` · ${w.avgWatts}W` : ''}

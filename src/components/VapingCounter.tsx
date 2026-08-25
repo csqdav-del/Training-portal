@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Flame, Heart, Pencil, Check } from 'lucide-react';
+import { Flame, Heart, Pencil, Check, Play } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface VapingCounterProps {
@@ -14,6 +14,7 @@ const COST_PER_DAY = 5; // $/jour, estimation
 export default function VapingCounter({ startDate, onSetStartDate, onReset }: VapingCounterProps) {
   const [daysCount, setDaysCount] = useState(0);
   const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(0);
   const [editing, setEditing] = useState(false);
   const [dateInput, setDateInput] = useState(format(startDate ?? new Date(), 'yyyy-MM-dd'));
 
@@ -25,6 +26,7 @@ export default function VapingCounter({ startDate, onSetStartDate, onReset }: Va
     if (!startDate) {
       setDaysCount(0);
       setHours(0);
+      setMinutes(0);
       return;
     }
 
@@ -33,12 +35,20 @@ export default function VapingCounter({ startDate, onSetStartDate, onReset }: Va
       const safeMs = Math.max(0, diffMs); // une date future ne doit pas donner de compteur négatif
       setDaysCount(Math.floor(safeMs / (1000 * 60 * 60 * 24)));
       setHours(Math.floor((safeMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
+      setMinutes(Math.floor((safeMs % (1000 * 60 * 60)) / (1000 * 60)));
     };
 
     calculateTime();
-    const interval = setInterval(calculateTime, 60000);
+    const interval = setInterval(calculateTime, 30000);
     return () => clearInterval(interval);
   }, [startDate]);
+
+  /**
+   * Départ immédiat : c'est le cas le plus fréquent (on décide d'arrêter là,
+   * maintenant) et ça évite d'aller chercher une date dans un sélecteur.
+   * On garde l'heure exacte, pas midi comme pour une date saisie après coup.
+   */
+  const handleStartNow = () => onSetStartDate(new Date());
 
   const handleSaveDate = () => {
     if (!dateInput) return;
@@ -58,7 +68,21 @@ export default function VapingCounter({ startDate, onSetStartDate, onReset }: Va
         <h2 className="text-2xl font-display font-bold text-sport-strength mb-2 uppercase tracking-wide text-center">
           Arrêt de la Vapoteuse 🎯
         </h2>
-        <p className="text-slate-400 font-mono text-sm text-center mb-6">Quand as-tu arrêté ?</p>
+        <p className="text-slate-400 font-mono text-sm text-center mb-6">C'est parti quand tu veux</p>
+
+        <button
+          onClick={handleStartNow}
+          className="w-full bg-sport-strength/25 border border-sport-strength/60 text-sport-strength py-3 rounded-lg font-semibold hover:bg-sport-strength/35 hover:shadow-neon-purple flex items-center justify-center gap-2"
+        >
+          <Play className="w-4 h-4" /> Commencer l'arrêt maintenant
+        </button>
+
+        <div className="flex items-center gap-3 my-5">
+          <div className="h-px bg-cyber-line flex-1" />
+          <span className="text-[11px] text-slate-600 font-mono uppercase tracking-wide">ou j'ai arrêté avant</span>
+          <div className="h-px bg-cyber-line flex-1" />
+        </div>
+
         <input
           type="date"
           value={dateInput}
@@ -68,9 +92,9 @@ export default function VapingCounter({ startDate, onSetStartDate, onReset }: Va
         />
         <button
           onClick={handleSaveDate}
-          className="w-full bg-sport-strength/20 border border-sport-strength/50 text-sport-strength py-2.5 rounded-lg font-semibold hover:bg-sport-strength/30"
+          className="w-full bg-cyber-panel2 border border-cyber-line text-slate-300 py-2.5 rounded-lg font-semibold hover:border-primary-400/50 hover:text-primary-300"
         >
-          Démarrer le compteur
+          Démarrer à cette date
         </button>
       </div>
     );
@@ -122,6 +146,16 @@ export default function VapingCounter({ startDate, onSetStartDate, onReset }: Va
               <div className="text-4xl font-bold text-primary-300 font-mono">{hours}</div>
               <div className="text-slate-400 text-sm mt-2">Heures</div>
             </div>
+            {/* Le premier jour, voir les minutes bouger aide plus que « 0 jour ». */}
+            {daysCount === 0 && (
+              <>
+                <div className="text-4xl text-slate-600">•</div>
+                <div>
+                  <div className="text-4xl font-bold text-primary-300 font-mono">{minutes}</div>
+                  <div className="text-slate-400 text-sm mt-2">Minutes</div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

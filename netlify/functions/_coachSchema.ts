@@ -20,7 +20,10 @@ const EDIT_SCHEMA = {
   required: ['title', 'targetZone', 'targetDistanceKm', 'targetDurationMin', 'notes', 'skipped'],
   properties: {
     title: { type: ['string', 'null'], description: 'Nouveau titre, ou null pour garder celui du plan.' },
-    targetZone: { type: ['string', 'null'], enum: [...ZONE_ENUM, null] },
+    // Pas de `type` ici : l'API rejette `enum` combiné à un type nullable écrit en
+    // tableau (« Enum value 'z1' does not match declared type ["string","null"] »).
+    // L'enum contient déjà null, donc il contraint la valeur à lui seul.
+    targetZone: { enum: [...ZONE_ENUM, null], description: 'Nouvelle zone FC, ou null pour garder celle du plan.' },
     targetDistanceKm: { type: ['number', 'null'], description: 'Nouvelle distance cible en km, ou null.' },
     targetDurationMin: { type: ['number', 'null'], description: 'Nouvelle durée cible en minutes, ou null.' },
     notes: { type: ['string', 'null'], description: 'Consigne ajoutée à la structure de la séance, ou null.' },
@@ -59,7 +62,13 @@ const PROPOSAL_SCHEMA = {
       description:
         'Identifiant exact de la séance, repris tel quel du contexte (ex. "w12-run-long"). Requis pour move, edit, skip, reset. null sinon.',
     },
-    toDayIndex: { type: ['integer', 'null'], minimum: 0, maximum: 6, description: 'Requis pour move. null sinon.' },
+    // Pas de minimum/maximum sur un type nullable : le validateur de l'API gère mal
+    // les contraintes appliquées à une union (même famille de problème que l'enum
+    // ci-dessus). Les bornes 0..6 sont de toute façon imposées par validateProposal.
+    toDayIndex: {
+      type: ['integer', 'null'],
+      description: 'Jour cible, 0 = lundi ... 6 = dimanche. Requis pour move, null sinon.',
+    },
     edit: { ...EDIT_SCHEMA, type: ['object', 'null'], description: 'Requis pour edit. null sinon.' },
     skipped: { type: ['boolean', 'null'], description: 'Requis pour skip. null sinon.' },
     session: { ...NEW_SESSION_SCHEMA, type: ['object', 'null'], description: 'Requis pour add. null sinon.' },

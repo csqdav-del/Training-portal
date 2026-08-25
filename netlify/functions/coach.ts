@@ -134,6 +134,16 @@ function encodeEvent(event: CoachStreamEvent | Record<string, unknown>): Uint8Ar
   return new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);
 }
 
+/**
+ * Le portail n'a qu'un utilisateur : cacher la cause d'une panne derrière un
+ * message générique ne protège personne et rend le diagnostic impossible depuis
+ * l'écran. On remonte donc le message réel de l'API.
+ */
+function describeError(label: string, err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err);
+  return `${label} : ${detail}`;
+}
+
 // --- Modes -----------------------------------------------------------------
 
 async function countRecentAnalyses(uid: string): Promise<number> {
@@ -239,7 +249,7 @@ function handleAnalyze(client: Anthropic, uid: string): Response {
         );
       } catch (err) {
         console.error('coach analyze failed', err);
-        controller.enqueue(encodeEvent({ type: 'error', error: 'Analyse impossible pour le moment.' }));
+        controller.enqueue(encodeEvent({ type: 'error', error: describeError('Analyse impossible', err) }));
       } finally {
         stopKeepAlive();
         controller.close();
@@ -316,7 +326,7 @@ function handleChat(client: Anthropic, uid: string, userMessage: string): Respon
         controller.enqueue(encodeEvent({ type: 'done', proposals }));
       } catch (err) {
         console.error('coach chat failed', err);
-        controller.enqueue(encodeEvent({ type: 'error', error: 'Le coach n’a pas pu répondre.' }));
+        controller.enqueue(encodeEvent({ type: 'error', error: describeError('Le coach n’a pas pu répondre', err) }));
       } finally {
         stopKeepAlive();
         controller.close();

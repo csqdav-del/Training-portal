@@ -127,7 +127,7 @@ export const ANALYSIS_SCHEMA = {
 export const PROPOSE_TOOL = {
   name: 'propose_plan_change',
   description:
-    'Propose UN changement au calendrier d’entraînement de David. Le changement n’est pas appliqué : il est affiché pour approbation. Appelle cet outil une fois par changement proposé, et seulement si David demande un ajustement ou si un ajustement est clairement justifié.',
+    'Propose UN changement portant sur UNE séance du calendrier de David. Le changement n’est pas appliqué : il est affiché pour approbation. Appelle cet outil AUTANT DE FOIS qu’il y a de séances touchées dans le même tour — regrouper deux nages en une, par exemple, demande deux appels : une édition sur la séance conservée et un skip sur celle qui disparaît. Tout changement que tu décris dans ta réponse sans appeler cet outil ne se produira jamais.',
   strict: true,
   input_schema: ENVELOPE_SCHEMA,
 };

@@ -1,7 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { adminAuth, adminDb } from './_firebaseAdmin';
 import { buildCoachContext } from './_coachContext';
-import { ANALYSIS_SCHEMA, PROPOSE_TOOL, normalizeEnvelope, normalizeObservations } from './_coachSchema';
+import {
+  ANALYSIS_SCHEMA,
+  MAX_PROPOSALS,
+  PROPOSE_TOOL,
+  normalizeEnvelope,
+  normalizeObservations,
+} from './_coachSchema';
 import { validateProposal } from '../../src/lib/coachValidation';
 import type {
   CoachChatTurn,
@@ -221,7 +227,8 @@ function handleAnalyze(client: Anthropic, uid: string): Response {
             // Une proposition inventée est jetée ici : elle n'atteint jamais l'écran.
             if (error) console.warn('proposition rejetée', error, JSON.stringify(p.proposal));
             return !error;
-          });
+          })
+          .slice(0, MAX_PROPOSALS);
 
         const analysis = {
           summary: String(parsed.summary ?? ''),
@@ -296,7 +303,8 @@ function handleChat(client: Anthropic, uid: string, userMessage: string): Respon
             const error = validateProposal(p, context.overridesByWeek[p.weekNumber]);
             if (error) console.warn('proposition rejetée', error, JSON.stringify(p.proposal));
             return !error;
-          });
+          })
+          .slice(0, MAX_PROPOSALS);
 
         // On persiste la réponse du modèle, et — s'il a appelé l'outil — un
         // tool_result par appel : sans ça le fil serait invalide au tour suivant.

@@ -36,7 +36,7 @@ const NEW_SESSION_SCHEMA = {
   additionalProperties: false,
   required: ['dayIndex', 'discipline', 'title', 'targetZone', 'targetDistanceKm', 'targetDurationMin', 'notes'],
   properties: {
-    dayIndex: { type: 'integer', minimum: 0, maximum: 6, description: '0 = lundi ... 6 = dimanche.' },
+    dayIndex: { type: 'integer', description: 'Jour de la semaine, 0 = lundi ... 6 = dimanche.' },
     discipline: { type: 'string', enum: PLAN_DISCIPLINE_ENUM },
     title: { type: 'string' },
     targetZone: { type: 'string', enum: ZONE_ENUM },
@@ -99,9 +99,11 @@ export const ANALYSIS_SCHEMA = {
   required: ['summary', 'observations', 'proposals'],
   properties: {
     summary: { type: 'string', description: 'Deux ou trois phrases en français sur où en est David.' },
+    // Ni maxItems ici ni sur `proposals` : le validateur de l'API ne supporte pas
+    // ce mot-clé (« For 'array' type, property 'maxItems' is not supported »).
+    // Les plafonds sont demandés dans le prompt et coupés côté serveur.
     observations: {
       type: 'array',
-      maxItems: 6,
       items: {
         type: 'object',
         additionalProperties: false,
@@ -117,7 +119,7 @@ export const ANALYSIS_SCHEMA = {
         },
       },
     },
-    proposals: { type: 'array', maxItems: 5, items: ENVELOPE_SCHEMA },
+    proposals: { type: 'array', items: ENVELOPE_SCHEMA },
   },
 };
 
@@ -209,9 +211,14 @@ export function normalizeEnvelope(raw: unknown, index: number): CoachProposalEnv
   };
 }
 
+/** Plafonds : le schéma ne peut pas les porter (maxItems non supporté), on coupe ici. */
+export const MAX_OBSERVATIONS = 6;
+export const MAX_PROPOSALS = 5;
+
 export function normalizeObservations(raw: unknown): CoachObservation[] {
   if (!Array.isArray(raw)) return [];
   return raw
+    .slice(0, MAX_OBSERVATIONS)
     .filter((o): o is Record<string, unknown> => !!o && typeof o === 'object')
     .map<CoachObservation>((o) => ({
       title: String(o.title ?? ''),

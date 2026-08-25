@@ -1,5 +1,6 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { DEFAULT_PLAN, VapingPlan } from './vapingPuffs';
 
 function vapingRef(uid: string) {
   return doc(db, 'users', uid, 'settings', 'vaping');
@@ -24,4 +25,25 @@ export async function setVapingStart(uid: string, startDate: Date) {
 /** Rechute : le compteur repart de maintenant. */
 export async function resetVapingStreak(uid: string) {
   await setVapingStart(uid, new Date());
+}
+
+/**
+ * Plan de réduction progressive (baseline + durée), rangé dans le même doc de
+ * settings que la date d'arrêt : c'est la même préférence côté utilisateur.
+ */
+export function subscribeToVapingPlan(uid: string, callback: (plan: VapingPlan) => void): () => void {
+  return onSnapshot(vapingRef(uid), (snap) => {
+    const data = snap.data();
+    const baseline = Number(data?.baseline);
+    const targetDays = Number(data?.targetDays);
+    callback({
+      baseline: Number.isFinite(baseline) && baseline > 0 ? Math.round(baseline) : null,
+      targetDays: Number.isFinite(targetDays) && targetDays > 0 ? Math.round(targetDays) : DEFAULT_PLAN.targetDays,
+      planStart: typeof data?.planStart === 'string' ? data.planStart : null,
+    });
+  });
+}
+
+export async function saveVapingPlan(uid: string, plan: Partial<VapingPlan>) {
+  await setDoc(vapingRef(uid), { ...plan, updatedAt: Date.now() }, { merge: true });
 }

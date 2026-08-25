@@ -37,7 +37,12 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
 
-      // Préférences persistées (date d'arrêt de la vapoteuse, etc.).
+      // Compteur de puffs, un doc par jour (id = YYYY-MM-DD local).
+      match /vapingLogs/{dateId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Préférences persistées (date d'arrêt de la vapoteuse, plan de sevrage, etc.).
       match /settings/{settingId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }

@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
 import WeightTracker from './components/WeightTracker';
 import VapingCounter from './components/VapingCounter';
+import PuffTracker from './components/PuffTracker';
 import NutritionTracker from './components/NutritionTracker';
 import { Workout, WeightEntry, WeeklyStats, DailyMetric, Discipline } from './types';
 import { HR_ZONES } from './data/trainingPlan';
@@ -405,13 +406,25 @@ export default function App() {
         )}
 
         {activeTab === 'vaping' && (
-          <VapingCounter
-            startDate={vapingStart}
-            onSetStartDate={(date) =>
-              saveVapingStart(user.uid, date).catch((err) => console.error('setVapingStart failed', err))
-            }
-            onReset={() => resetVapingStreak(user.uid).catch((err) => console.error('resetVapingStreak failed', err))}
-          />
+          <div className="space-y-10">
+            {/* Le suivi quotidien est l'outil du jour : il passe avant le compteur
+                d'abstinence, qui n'a de sens qu'une fois l'arrêt complet enclenché. */}
+            <PuffTracker uid={user.uid} />
+
+            <div className="flex items-center gap-3">
+              <div className="h-px bg-cyber-line flex-1" />
+              <span className="text-[11px] text-slate-600 font-mono uppercase tracking-wide">Arrêt complet</span>
+              <div className="h-px bg-cyber-line flex-1" />
+            </div>
+
+            <VapingCounter
+              startDate={vapingStart}
+              onSetStartDate={(date) =>
+                saveVapingStart(user.uid, date).catch((err) => console.error('setVapingStart failed', err))
+              }
+              onReset={() => resetVapingStreak(user.uid).catch((err) => console.error('resetVapingStreak failed', err))}
+            />
+          </div>
         )}
       </main>
 

@@ -1,3 +1,11 @@
+/** Un exercice d'une séance de musculation saisie à la main. */
+export interface StrengthExercise {
+  name: string;
+  sets?: number;
+  reps?: number;
+  weightLbs?: number;
+}
+
 export interface Workout {
   id: string;
   userId: string;
@@ -14,6 +22,13 @@ export interface Workout {
   source: 'strava' | 'health_connect' | 'manual';
   externalId?: string;
   syncedAt: Date;
+  // --- Saisie manuelle ---
+  title?: string; // nom donné à la séance ("Push day", "Nage libre bassin")
+  rpe?: number; // effort ressenti 1-10
+  exercises?: StrengthExercise[]; // musculation : détail des mouvements
+  /** Séance du plan que cette activité vient valider ou remplacer. */
+  plannedSessionId?: string;
+  plannedWeekNumber?: number;
   // --- Détails enrichis (Strava) ---
   sportType?: string;
   elapsedTime?: number; // minutes, arrêts inclus
@@ -38,6 +53,8 @@ export interface Workout {
   locationState?: string;
   polyline?: string; // tracé encodé (map.summary_polyline)
   stravaUrl?: string;
+  // --- Détails enrichis (Health Connect) ---
+  hcSteps?: number; // pas comptés pendant la séance
 }
 
 export interface WeightEntry {
@@ -46,6 +63,27 @@ export interface WeightEntry {
   date: Date;
   weight: number; // lbs
   notes?: string;
+  bodyFatPct?: number; // masse grasse (Health Connect / balance connectée)
+  source?: 'manual' | 'health_connect';
+}
+
+/**
+ * Métriques de récupération quotidiennes, un document par jour (id = YYYY-MM-DD).
+ * Alimenté uniquement par Health Connect via la fonction health-sync.
+ */
+export interface DailyMetric {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  steps?: number;
+  restingHr?: number; // bpm
+  sleepMinutes?: number;
+  sleepStart?: string; // ISO
+  sleepEnd?: string; // ISO
+  sleepDeepMinutes?: number;
+  sleepRemMinutes?: number;
+  sleepLightMinutes?: number;
+  sleepAwakeMinutes?: number;
 }
 
 export interface TrainingZones {

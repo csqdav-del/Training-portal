@@ -1,11 +1,13 @@
 import { createPortal } from 'react-dom';
-import { X, ExternalLink, Trophy, ThumbsUp } from 'lucide-react';
+import { X, ExternalLink, Trophy, ThumbsUp, Pencil, Dumbbell } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Discipline, Workout } from '../types';
 
 interface ActivityDetailProps {
   workout: Workout;
+  /** Fourni uniquement pour les activités saisies à la main (les seules modifiables). */
+  onEdit?: () => void;
   onClose: () => void;
 }
 
@@ -101,7 +103,7 @@ function Stat({ value, unit, label, accent }: { value: string; unit?: string; la
   );
 }
 
-export default function ActivityDetail({ workout: w, onClose }: ActivityDetailProps) {
+export default function ActivityDetail({ workout: w, onEdit, onClose }: ActivityDetailProps) {
   const meta = DISCIPLINE_META[w.type] ?? DISCIPLINE_META.other;
   const trackPath = w.polyline ? buildTrackPath(w.polyline) : null;
   const place = [w.locationCity, w.locationState].filter(Boolean).join(', ');
@@ -117,6 +119,7 @@ export default function ActivityDetail({ workout: w, onClose }: ActivityDetailPr
   if (w.elevationMax) secondary.push({ label: 'Altitude max', value: `${w.elevationMax} m` });
   if (w.calories) secondary.push({ label: 'Calories', value: `${w.calories} kcal` });
   if (w.sufferScore) secondary.push({ label: 'Effort relatif', value: `${w.sufferScore}` });
+  if (w.rpe) secondary.push({ label: 'Effort ressenti', value: `${w.rpe}/10` });
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
@@ -132,16 +135,27 @@ export default function ActivityDetail({ workout: w, onClose }: ActivityDetailPr
             </p>
             <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2 mt-1">
               <span className="text-2xl shrink-0">{meta.icon}</span>
-              <span className="truncate">{w.notes || meta.label}</span>
+              <span className="truncate">{w.title || w.notes || meta.label}</span>
             </h2>
             <p className={`text-xs font-mono mt-1 ${meta.color}`}>
               {w.sportType || meta.label}
               {w.source === 'strava' ? ' · Strava' : w.source === 'manual' ? ' · Manuel' : ''}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-primary-300 shrink-0">
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                title="Modifier cette activité"
+                className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-primary-300"
+              >
+                <Pencil className="w-5 h-5" />
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 hover:bg-cyber-panel2 rounded-lg text-slate-400 hover:text-primary-300">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto p-6 pt-4 min-h-0 space-y-4">
@@ -164,6 +178,42 @@ export default function ActivityDetail({ workout: w, onClose }: ActivityDetailPr
               <svg viewBox="0 0 300 160" className="w-full h-40" role="img" aria-label="Tracé de l'activité">
                 <path d={trackPath} fill="none" stroke="#fc5200" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
               </svg>
+            </div>
+          )}
+
+          {/* Détail des exercices (musculation saisie à la main) */}
+          {w.exercises && w.exercises.length > 0 && (
+            <div className="bg-cyber-panel2 border border-cyber-line rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs text-slate-500 uppercase tracking-wide font-mono flex items-center gap-1.5">
+                  <Dumbbell className="w-3.5 h-3.5" /> Exercices
+                </h3>
+                {(() => {
+                  const volume = w.exercises.reduce(
+                    (sum, e) => sum + (e.sets ?? 0) * (e.reps ?? 0) * (e.weightLbs ?? 0),
+                    0,
+                  );
+                  return volume > 0 ? (
+                    <span className="text-xs text-primary-300 font-mono">
+                      Volume total : {volume.toLocaleString('fr-CA')} lbs
+                    </span>
+                  ) : null;
+                })()}
+              </div>
+              <div className="space-y-1">
+                {w.exercises.map((ex, i) => (
+                  <div
+                    key={i}
+                    className="flex justify-between gap-3 text-sm font-mono border-b border-cyber-line/50 py-1.5"
+                  >
+                    <span className="text-slate-200 min-w-0 truncate">{ex.name}</span>
+                    <span className="text-slate-400 shrink-0">
+                      {ex.sets && ex.reps ? `${ex.sets} × ${ex.reps}` : ex.sets ? `${ex.sets} séries` : '—'}
+                      {ex.weightLbs ? ` @ ${ex.weightLbs} lbs` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -207,6 +257,11 @@ export default function ActivityDetail({ workout: w, onClose }: ActivityDetailPr
                 </span>
               )}
             </div>
+          )}
+
+          {/* Notes personnelles (le titre les remplaçait avant) */}
+          {w.notes && w.notes !== w.title && (
+            <p className="text-sm text-slate-400 italic border-l-2 border-cyber-line pl-3">{w.notes}</p>
           )}
 
           {/* Matériel */}

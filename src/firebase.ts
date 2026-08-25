@@ -1,6 +1,14 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithCredential,
+  signInWithPopup,
+  signOut,
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 
 // ⚠️ REPLACE WITH YOUR FIREBASE CONFIG
 // Get this from Firebase Console → Project Settings → Your apps
@@ -19,11 +27,28 @@ export const db = getFirestore(app);
 
 const googleProvider = new GoogleAuthProvider();
 
-export function signInWithGoogle() {
-  return signInWithPopup(auth, googleProvider);
+/**
+ * signInWithPopup ne fonctionne pas dans la WebView Capacitor (pas de fenêtre
+ * popup, et l'origine `capacitor://localhost` n'est pas un domaine autorisé).
+ * En natif on passe donc par le SDK Google natif, puis on injecte le credential
+ * obtenu dans le SDK JS pour que le reste de l'app (Firestore, ID token pour
+ * les fonctions Netlify) fonctionne exactement pareil.
+ */
+export async function signInWithGoogle() {
+  if (!Capacitor.isNativePlatform()) {
+    return signInWithPopup(auth, googleProvider);
+  }
+
+  const result = await FirebaseAuthentication.signInWithGoogle();
+  const idToken = result.credential?.idToken;
+  if (!idToken) throw new Error('Connexion Google annulée ou sans jeton');
+  return signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
 }
 
-export function signOutUser() {
+export async function signOutUser() {
+  if (Capacitor.isNativePlatform()) {
+    await FirebaseAuthentication.signOut();
+  }
   return signOut(auth);
 }
 

@@ -1,6 +1,6 @@
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Discipline, Workout } from '../types';
+import { Discipline, StrengthExercise, Workout } from '../types';
 
 export function subscribeToWorkouts(uid: string, callback: (workouts: Workout[]) => void): () => void {
   const q = query(collection(db, 'users', uid, 'workouts'), orderBy('date', 'desc'));
@@ -20,6 +20,11 @@ export function subscribeToWorkouts(uid: string, callback: (workouts: Workout[])
         source: data.source ?? 'manual',
         externalId: data.externalId ?? undefined,
         syncedAt: data.syncedAt ? new Date(data.syncedAt) : new Date(),
+        title: data.title ?? undefined,
+        rpe: data.rpe ?? undefined,
+        exercises: (data.exercises as StrengthExercise[] | null) ?? undefined,
+        plannedSessionId: data.plannedSessionId ?? undefined,
+        plannedWeekNumber: data.plannedWeekNumber ?? undefined,
         sportType: data.sportType ?? undefined,
         elapsedTime: data.elapsedTime ?? undefined,
         elevationGain: data.elevationGain ?? undefined,

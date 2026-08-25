@@ -29,3 +29,17 @@ coverage
 # OS
 .DS_Store
 Thumbs.db
+
+# Capacitor / Android (le dossier android/ est verse, pas ses artefacts de build)
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/google-services.json
+android/capacitor-cordova-android-plugins/
+.capacitor/
+
+# Artefacts de build TypeScript (tsc -b)
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

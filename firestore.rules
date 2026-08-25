@@ -10,9 +10,18 @@ service cloud.firestore {
 
       match /workouts/{workoutId} {
         allow read: if request.auth != null && request.auth.uid == uid;
-        // Écriture Strava = fonction serverless (Admin SDK, ignore ces règles).
+        // Écriture Strava et Health Connect = fonction serverless (Admin SDK,
+        // ignore ces règles). Les docs "hc_*" ne matchent pas le motif ci-dessous,
+        // donc le client ne peut pas les falsifier.
         // Écriture client = uniquement des entrées manuelles (id préfixé "manual_").
         allow write: if request.auth != null && request.auth.uid == uid && workoutId.matches('manual_.*');
+      }
+
+      // Métriques quotidiennes Health Connect (sommeil, pas, FC au repos).
+      // Écrites uniquement par la fonction health-sync — client en lecture seule.
+      match /dailyMetrics/{dateId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
       }
 
       match /scheduleOverrides/{weekId} {

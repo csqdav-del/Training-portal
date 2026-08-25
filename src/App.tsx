@@ -7,13 +7,21 @@ import Calendar from './components/Calendar';
 import WeightTracker from './components/WeightTracker';
 import VapingCounter from './components/VapingCounter';
 import NutritionTracker from './components/NutritionTracker';
-import { Workout, WeightEntry, WeeklyStats } from './types';
+import { Workout, WeightEntry, WeeklyStats, DailyMetric } from './types';
 import { HR_ZONES } from './data/trainingPlan';
 import { auth, signInWithGoogle, signOutUser } from './firebase';
 import { subscribeToWorkouts } from './lib/firestoreWorkouts';
 import { subscribeToWeights, addWeightEntry } from './lib/firestoreWeights';
-import { subscribeToVaping, setVapingStart, resetVapingStreak } from './lib/vaping';
+import { subscribeToDailyMetrics, findMetricForDate } from './lib/firestoreDailyMetrics';
+// Aliasé : `setVapingStart` est déjà le nom du setter d'état local plus bas.
+import { subscribeToVaping, setVapingStart as saveVapingStart, resetVapingStreak } from './lib/vaping';
 import { connectStrava, syncStrava, subscribeToStravaStatus } from './lib/strava';
+import {
+  connectHealthConnect,
+  isHealthConnectSupported,
+  subscribeToHealthStatus,
+  syncHealthConnect,
+} from './lib/healthConnect';
 
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -28,6 +36,13 @@ export default function App() {
   const [lastSyncCount, setLastSyncCount] = useState<number | null>(null);
   const [stravaBanner, setStravaBanner] = useState<'connected' | 'error' | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  // Health Connect : disponible uniquement dans l'app Android (pas d'API web).
+  const [dailyMetrics, setDailyMetrics] = useState<DailyMetric[]>([]);
+  const [healthConnected, setHealthConnected] = useState(false);
+  const [healthSyncing, setHealthSyncing] = useState(false);
+  const [lastHealthSyncCount, setLastHealthSyncCount] = useState<number | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const healthSupported = isHealthConnectSupported();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -43,17 +58,23 @@ export default function App() {
       setWeights([]);
       setVapingStart(null);
       setStravaConnected(false);
+      setDailyMetrics([]);
+      setHealthConnected(false);
       return;
     }
     const unsubWorkouts = subscribeToWorkouts(user.uid, setWorkouts);
     const unsubWeights = subscribeToWeights(user.uid, setWeights);
     const unsubVaping = subscribeToVaping(user.uid, setVapingStart);
     const unsubStrava = subscribeToStravaStatus(user.uid, setStravaConnected);
+    const unsubMetrics = subscribeToDailyMetrics(user.uid, setDailyMetrics);
+    const unsubHealth = subscribeToHealthStatus(user.uid, setHealthConnected);
     return () => {
       unsubWorkouts();
       unsubWeights();
       unsubVaping();
       unsubStrava();
+      unsubMetrics();
+      unsubHealth();
     };
   }, [user]);
 
@@ -69,6 +90,22 @@ export default function App() {
     }, 10 * 60 * 1000); // re-sync toutes les 10 minutes tant que l'app est ouverte
     return () => clearInterval(interval);
   }, [stravaConnected]);
+
+  // Health Connect : une seule synchro par ouverture de l'app. Lire le magasin
+  // local est bien plus coûteux qu'un appel Strava, et les données de la montre
+  // n'arrivent de toute façon qu'une poignée de fois par jour.
+  useEffect(() => {
+    if (!healthSupported || !healthConnected) return;
+    let cancelled = false;
+    syncHealthConnect().then((result) => {
+      if (cancelled) return;
+      if ('error' in result) setHealthError(result.error);
+      else setLastHealthSyncCount(result.synced);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [healthSupported, healthConnected]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -103,6 +140,36 @@ export default function App() {
     setSyncing(false);
     if ('synced' in result) setLastSyncCount(result.synced);
   };
+
+  // Équivalent de « Connecter Strava » : Health Connect n'a pas d'OAuth, c'est
+  // l'écran de permissions Android qui joue ce rôle. Une synchro suit tout de
+  // suite pour que David voie le résultat sans avoir à retaper sur un bouton.
+  const handleConnectHealth = async () => {
+    setHealthError(null);
+    try {
+      const granted = await connectHealthConnect();
+      if (!granted) {
+        setHealthError('permissions_refusees');
+        return;
+      }
+      await handleSyncHealth();
+    } catch (err) {
+      console.error('connectHealthConnect failed', err);
+      setHealthError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleSyncHealth = async () => {
+    setHealthError(null);
+    setHealthSyncing(true);
+    const result = await syncHealthConnect();
+    setHealthSyncing(false);
+    if ('error' in result) setHealthError(result.error);
+    else setLastHealthSyncCount(result.synced);
+  };
+
+  // Métriques de récup du jour, affichées au tableau de bord.
+  const todayMetric = findMetricForDate(dailyMetrics, new Date());
 
   // Stats de la semaine en cours (lundi-dimanche)
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -288,6 +355,14 @@ export default function App() {
             lastSyncCount={lastSyncCount}
             onConnectStrava={handleConnectStrava}
             onSyncStrava={handleSyncStrava}
+            healthSupported={healthSupported}
+            healthConnected={healthConnected}
+            healthSyncing={healthSyncing}
+            lastHealthSyncCount={lastHealthSyncCount}
+            healthError={healthError}
+            todayMetric={todayMetric}
+            onConnectHealth={handleConnectHealth}
+            onSyncHealth={handleSyncHealth}
           />
         )}
 
@@ -307,7 +382,7 @@ export default function App() {
           <VapingCounter
             startDate={vapingStart}
             onSetStartDate={(date) =>
-              setVapingStart(user.uid, date).catch((err) => console.error('setVapingStart failed', err))
+              saveVapingStart(user.uid, date).catch((err) => console.error('setVapingStart failed', err))
             }
             onReset={() => resetVapingStreak(user.uid).catch((err) => console.error('resetVapingStreak failed', err))}
           />

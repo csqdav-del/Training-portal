@@ -68,7 +68,16 @@ User (toi)
   heartRate: { avg: 140, max: 160 },
   source: "strava" | "health_connect" | "manual",
   externalId: "strava_123456", // pour dedup
-  syncedAt: Timestamp
+  syncedAt: Timestamp,
+
+  // --- Saisie manuelle uniquement (id du doc préfixé "manual_") ---
+  title: "Push day — haut du corps",
+  rpe: 7,                       // effort ressenti /10
+  exercises: [                  // musculation : le détail que Strava ne porte pas
+    { name: "Développé couché", sets: 4, reps: 8, weightLbs: 155 }
+  ],
+  plannedSessionId: "w12-d3-swim", // séance du plan validée ou remplacée
+  plannedWeekNumber: 12
 }
 
 // weights/{weightId}
@@ -111,37 +120,79 @@ Champs Strava → Workout:
 - max_heartrate → heartRate.max
 ```
 
-### 2. Google Fit (Samsung Health)
+### 2. Health Connect (Samsung Health)
+
+> L'approche Google Fit REST décrite à l'origine est abandonnée : l'API est en fin
+> de vie. Health Connect la remplace — mais il **n'a aucune API serveur**, les
+> données vivent uniquement sur l'appareil. D'où l'app Android Capacitor.
+> Détails complets : `HEALTH_CONNECT_SETUP.md`.
 
 ```
 Flow:
-1. User clique "Connect Health"
-2. Redirect vers Google OAuth
-3. User authorise → Google redirige avec code
-4. Frontend échange code contre access_token
-5. Cloud Function fetch /fitness/rest/v1/users/me/dataset
-6. Parse activities (dataType: com.google.step_count.delta, etc.)
-7. Map à Workout (type='swim'|'run', etc.)
+1. User ouvre l'app Android (le même site, emballé avec Capacitor)
+2. Clique "Autoriser Health Connect" → écran de permissions Android
+3. L'app lit le magasin local (60 derniers jours) via @capgo/capacitor-health
+4. POST du payload vers /.netlify/functions/health-sync + Firebase ID token
+5. La fonction normalise, déduplique contre Strava, écrit via Admin SDK
+6. Firestore pousse en temps réel vers le portail web ET l'app
 
-Champs Google Fit → Workout:
-- startTimeNanos → date
-- endTimeNanos → duration (calc)
-- activityType → type (check: 119=run, 65=swim)
-- distance → distance
-- calories → calories
+Champs Health Connect → Workout:
+- startDate           → date
+- duration (secondes) → duration (pauses exclues)
+- workoutType         → type ("running", "cycling", "swimmingPool"...)
+- totalDistance (m)   → distance
+- totalEnergyBurned   → calories
+- heartRate (samples) → heartRate.avg / .max, recoupé par fenêtre temporelle
 ```
 
-### 3. Weight Sync (Manual + Samsung Health)
+La fréquence cardiaque est le seul champ que le plugin ne rattache pas à la
+séance : on retient les échantillons tombant entre le début et la fin.
+
+### 3. Saisie manuelle d'un entraînement
+
+Pour tout ce qui ne passe ni par Strava ni par la montre — typiquement la
+musculation, que David ne veut pas mélanger aux sorties course/vélo/natation sur
+Strava.
 
 ```
-Manual (Phase 1):
+Points d'entrée (tous ouvrent LogWorkoutModal) :
+- Tableau de bord → « Logger » sur une séance du jour (pré-remplit le formulaire)
+- Tableau de bord → « Logger un autre entraînement » (formulaire vierge, muscu par défaut)
+- Détail d'une journée → « J'ai fait ça » / « Remplacer » sur chaque séance
+- Activités récentes → ✏️ pour modifier, 🗑 dans le formulaire pour supprimer
+
+Écriture : users/{uid}/workouts/manual_{timestamp}, directement depuis le client.
+Les règles Firestore n'autorisent l'écriture cliente que sur ce préfixe — impossible
+donc de falsifier une activité Strava (strava_*) ou Health Connect (hc_*).
+```
+
+**Substitution.** Quand la discipline saisie diffère de celle du plan (piscine
+fermée → muscu), le formulaire propose de marquer la séance comme remplacée :
+
+- l'activité garde `plannedSessionId`, ce qui la relie à la séance prévue ;
+- la séance reçoit `edits[sessionId].replacedBy = "strength"` dans
+  `scheduleOverrides` ;
+- au calendrier elle apparaît barrée avec « → 💪 » plutôt que de rester « à faire ».
+
+C'est volontairement distinct de `skipped`, qui fait disparaître une séance
+carrément abandonnée.
+
+### 4. Weight Sync (Manual + Health Connect)
+
+```
+Manual:
 - User ajoute poids dans WeightTracker
 - Save direct dans weights collection
 
-Samsung Health (Phase 2+):
-- Si Google Fit access autorisé
-- Fetch /fitness/rest/v1/users/me/dataset?dataTypes=com.google.weight
-- Parse + auto-sync vers weights collection
+Health Connect:
+- Records Weight + BodyFat lus par l'app Android
+- Conversion kg → lbs (l'app affiche en lbs partout)
+- Un doc par jour (id = YYYY-MM-DD), le relevé le plus récent gagne
+
+Métriques quotidiennes (nouveau) — users/{uid}/dailyMetrics/{YYYY-MM-DD}:
+- SleepSession    → sleepMinutes + répartition deep/rem/light/awake
+- Steps           → steps (cumul de la journée)
+- RestingHeartRate → restingHr
 ```
 
 ---

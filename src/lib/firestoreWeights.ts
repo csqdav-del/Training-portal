@@ -14,6 +14,8 @@ export function subscribeToWeights(uid: string, callback: (entries: WeightEntry[
           date: new Date(data.date),
           weight: data.weight ?? 0,
           notes: data.notes ?? undefined,
+          bodyFatPct: data.bodyFatPct ?? undefined,
+          source: data.source ?? 'manual',
         };
       }),
     );

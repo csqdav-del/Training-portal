@@ -1,11 +1,28 @@
 import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Droplet, Bike, Wind, Zap, Flame, Calendar as CalendarIcon, Link2, RefreshCw, Plus } from 'lucide-react';
-import { WeeklyStats, TrainingZones, PlanDiscipline, Discipline, Workout } from '../types';
+import {
+  Droplet,
+  Bike,
+  Wind,
+  Zap,
+  Flame,
+  Calendar as CalendarIcon,
+  Link2,
+  RefreshCw,
+  Plus,
+  Check,
+  Pencil,
+  HeartPulse,
+  Moon,
+  Footprints,
+  Smartphone,
+} from 'lucide-react';
+import { WeeklyStats, TrainingZones, PlanDiscipline, Discipline, PlannedSession, Workout, DailyMetric } from '../types';
 import { RACE, RACE_TARGETS, daysUntilRace, readiness, getWeekForDate, getDayPlan } from '../data/trainingPlan';
-import { addManualWorkout } from '../lib/manualWorkout';
+import { isManualWorkout } from '../lib/manualWorkout';
 import WorkoutDetail from './WorkoutDetail';
 import ActivityDetail from './ActivityDetail';
+import LogWorkoutModal from './LogWorkoutModal';
 import {
   subscribeToWeekOverrides,
   applyWeekOverrides,
@@ -24,6 +41,30 @@ interface DashboardProps {
   lastSyncCount: number | null;
   onConnectStrava: () => void;
   onSyncStrava: () => void;
+  /** false sur le web : Health Connect n'existe que dans l'app Android. */
+  healthSupported: boolean;
+  healthConnected: boolean;
+  healthSyncing: boolean;
+  lastHealthSyncCount: number | null;
+  healthError: string | null;
+  todayMetric: DailyMetric | undefined;
+  onConnectHealth: () => void;
+  onSyncHealth: () => void;
+}
+
+const HEALTH_ERROR_LABELS: Record<string, string> = {
+  not_logged_in: 'Connecte-toi d’abord',
+  not_native: 'Disponible seulement dans l’app Android',
+  health_connect_unavailable: 'Health Connect n’est pas installé sur ce téléphone',
+  not_authorized: 'Permissions Health Connect non accordées',
+  permissions_refusees: 'Permissions refusées',
+};
+
+/** 487 min → "8h07" */
+function formatSleep(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h${String(m).padStart(2, '0')}`;
 }
 
 const DISCIPLINE_META: Record<PlanDiscipline, { label: string; color: string; bar: string; icon: string }> = {
@@ -53,6 +94,14 @@ export default function Dashboard({
   lastSyncCount,
   onConnectStrava,
   onSyncStrava,
+  healthSupported,
+  healthConnected,
+  healthSyncing,
+  lastHealthSyncCount,
+  healthError,
+  todayMetric,
+  onConnectHealth,
+  onSyncHealth,
 }: DashboardProps) {
   const [showToday, setShowToday] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
@@ -64,36 +113,14 @@ export default function Dashboard({
     if (!currentWeekNumber) return;
     return subscribeToWeekOverrides(uid, currentWeekNumber, setWeekOverrides);
   }, [uid, currentWeekNumber]);
-  const [showManualForm, setShowManualForm] = useState(false);
-  const [manualType, setManualType] = useState<Discipline>('swim');
-  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
-  const [manualDuration, setManualDuration] = useState('');
-  const [manualDistance, setManualDistance] = useState('');
-  const [manualCalories, setManualCalories] = useState('');
-  const [manualHr, setManualHr] = useState('');
-  const [manualNotes, setManualNotes] = useState('');
-  const [savingManual, setSavingManual] = useState(false);
-
-  const handleAddManual = async () => {
-    if (!manualDuration) return;
-    setSavingManual(true);
-    await addManualWorkout(uid, {
-      type: manualType,
-      date: new Date(manualDate),
-      duration: parseFloat(manualDuration) || 0,
-      distance: manualDistance ? parseFloat(manualDistance) : undefined,
-      calories: manualCalories ? parseFloat(manualCalories) : undefined,
-      heartRateAvg: manualHr ? parseFloat(manualHr) : undefined,
-      notes: manualNotes || undefined,
-    });
-    setSavingManual(false);
-    setShowManualForm(false);
-    setManualDuration('');
-    setManualDistance('');
-    setManualCalories('');
-    setManualHr('');
-    setManualNotes('');
-  };
+  /**
+   * Saisie manuelle : `null` = fermé. `session` pré-remplit le formulaire avec la
+   * séance du jour qu'on vient valider ou troquer, `workout` ouvre en modification.
+   */
+  const [logging, setLogging] = useState<{
+    workout?: Workout | null;
+    session?: PlannedSession | null;
+  } | null>(null);
 
   const today = new Date();
   const currentWeek = getWeekForDate(today);
@@ -108,6 +135,19 @@ export default function Dashboard({
   const todayPlan = rawTodayPlan
     ? { ...rawTodayPlan, sessions: rawTodayPlan.sessions.filter((s) => !weekOverrides.edits[s.id]?.skipped) }
     : undefined;
+  /**
+   * Une séance compte comme faite si une activité du jour la référence
+   * explicitement (bouton « Logger »), si elle a été troquée contre un autre
+   * sport, ou si une activité de la même discipline est arrivée par Strava.
+   */
+  const isSessionDone = (session: PlannedSession): boolean => {
+    if (weekOverrides.edits[session.id]?.replacedBy) return true;
+    return workouts.some((w) => {
+      if (w.plannedSessionId === session.id) return true;
+      return w.type === session.discipline && new Date(w.date).toDateString() === today.toDateString();
+    });
+  };
+
   const raceDays = daysUntilRace(today);
   const overallReadiness = Math.round((readiness('swim') + readiness('bike') + readiness('run')) / 3);
 
@@ -198,32 +238,130 @@ export default function Dashboard({
         )}
       </div>
 
-      {/* Today's training — clickable */}
-      <button
-        onClick={() => todayPlan && setShowToday(true)}
-        disabled={!todayPlan}
-        className="w-full text-left glass-panel p-5 hover:border-primary-400/60 hover:shadow-neon-cyan transition-all disabled:hover:shadow-none"
-      >
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-2">
+      {/* Health Connect — lecture sur l'appareil, donc app Android seulement */}
+      <div className="glass-panel p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <HeartPulse
+            className={`w-4 h-4 shrink-0 ${healthConnected ? 'text-sport-strength' : 'text-slate-500'}`}
+          />
+          <span className={healthConnected ? 'text-sport-strength' : 'text-slate-400'}>
+            {!healthSupported
+              ? 'Health Connect'
+              : healthConnected
+                ? 'Health Connect connecté'
+                : 'Health Connect non connecté'}
+          </span>
+          {healthSupported && lastHealthSyncCount !== null && (
+            <span className="text-slate-600 font-mono">· {lastHealthSyncCount} entrées synchronisées</span>
+          )}
+          {healthSupported && healthError && (
+            <span className="text-sport-run font-mono truncate">
+              · {HEALTH_ERROR_LABELS[healthError] ?? healthError}
+            </span>
+          )}
+        </div>
+
+        {!healthSupported ? (
+          <span className="flex items-center gap-2 text-xs text-slate-500 font-mono">
+            <Smartphone className="w-4 h-4" />
+            Disponible dans l&apos;app Android
+          </span>
+        ) : healthConnected ? (
+          <button
+            onClick={onSyncHealth}
+            disabled={healthSyncing}
+            className="flex items-center gap-2 bg-primary-600/20 border border-primary-400/50 text-primary-300 px-3 py-1.5 rounded-lg hover:bg-primary-600/30 text-sm font-medium disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${healthSyncing ? 'animate-spin' : ''}`} />
+            {healthSyncing ? 'Synchronisation...' : 'Synchroniser'}
+          </button>
+        ) : (
+          <button
+            onClick={onConnectHealth}
+            className="flex items-center gap-2 bg-sport-strength/20 border border-sport-strength/50 text-sport-strength px-3 py-1.5 rounded-lg hover:bg-sport-strength/30 text-sm font-medium"
+          >
+            <Link2 className="w-4 h-4" />
+            Autoriser Health Connect
+          </button>
+        )}
+      </div>
+
+      {/* Récupération du jour (Health Connect) */}
+      {todayMetric && (
+        <div className="glass-panel p-4 grid grid-cols-3 gap-3">
+          <div className="flex items-center gap-2">
+            <Moon className="w-5 h-5 text-sport-swim shrink-0" />
+            <div className="min-w-0">
+              <div className="text-xs text-slate-500 uppercase tracking-widest font-mono">Sommeil</div>
+              <div className="text-lg text-slate-100 font-mono">
+                {todayMetric.sleepMinutes ? formatSleep(todayMetric.sleepMinutes) : '—'}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Footprints className="w-5 h-5 text-sport-run shrink-0" />
+            <div className="min-w-0">
+              <div className="text-xs text-slate-500 uppercase tracking-widest font-mono">Pas</div>
+              <div className="text-lg text-slate-100 font-mono">
+                {todayMetric.steps != null ? todayMetric.steps.toLocaleString('fr-CA') : '—'}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <HeartPulse className="w-5 h-5 text-sport-strength shrink-0" />
+            <div className="min-w-0">
+              <div className="text-xs text-slate-500 uppercase tracking-widest font-mono">FC repos</div>
+              <div className="text-lg text-slate-100 font-mono">
+                {todayMetric.restingHr != null ? `${todayMetric.restingHr} bpm` : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Entraînement du jour — chaque séance se logge en un clic */}
+      <div className="glass-panel p-5">
+        <button
+          onClick={() => todayPlan && setShowToday(true)}
+          disabled={!todayPlan}
+          className="w-full text-left flex items-center justify-between mb-3 group"
+        >
+          <h3 className="text-sm font-semibold text-slate-400 group-hover:text-primary-300 uppercase tracking-wide flex items-center gap-2">
             <CalendarIcon className="w-4 h-4" /> Entraînement du jour
           </h3>
           <span className="text-xs text-primary-300 font-mono">Semaine {currentWeek?.weekNumber ?? '—'}/48 →</span>
-        </div>
+        </button>
+
         {todayPlan && todayPlan.sessions.length > 0 ? (
           <div className="flex flex-wrap gap-3">
-            {todayPlan.sessions.map((s, i) => {
+            {todayPlan.sessions.map((s) => {
               const meta = DISCIPLINE_META[s.discipline];
+              const done = isSessionDone(s);
               return (
-                <div key={i} className="flex items-center gap-2 bg-cyber-panel2 border border-cyber-line rounded-lg px-3 py-2">
+                <div
+                  key={s.id}
+                  className="flex items-center gap-3 bg-cyber-panel2 border border-cyber-line rounded-lg px-3 py-2"
+                >
                   <span className="text-xl">{meta.icon}</span>
-                  <div>
+                  <div className="min-w-0">
                     <div className={`text-sm font-bold ${meta.color}`}>{s.title}</div>
                     <div className="text-xs text-slate-500 font-mono">
                       {s.targetZone.toUpperCase()} · {s.targetBpmMin}-{s.targetBpmMax} bpm ·{' '}
                       {s.targetDistanceKm > 0 ? `${s.targetDistanceKm}km` : `${s.targetDurationMin}min`}
                     </div>
                   </div>
+                  {done ? (
+                    <span className="flex items-center gap-1 text-xs text-sport-bike font-mono shrink-0">
+                      <Check className="w-3.5 h-3.5" /> Fait
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setLogging({ session: s })}
+                      className="flex items-center gap-1 text-xs bg-primary-600/20 border border-primary-400/50 text-primary-300 px-2.5 py-1.5 rounded-lg hover:bg-primary-600/30 shrink-0"
+                    >
+                      <Check className="w-3.5 h-3.5" /> Logger
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -231,7 +369,14 @@ export default function Dashboard({
         ) : (
           <div className="text-slate-500 font-mono text-sm">Repos — aucune séance planifiée aujourd'hui</div>
         )}
-      </button>
+
+        <button
+          onClick={() => setLogging({})}
+          className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-mono text-slate-500 hover:text-primary-300 border border-dashed border-cyber-line hover:border-primary-400/50 rounded-lg py-2"
+        >
+          <Plus className="w-3.5 h-3.5" /> Logger un autre entraînement (muscu, séance libre…)
+        </button>
+      </div>
 
       {/* Header Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -320,83 +465,12 @@ export default function Dashboard({
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-slate-100 uppercase tracking-wide">Activités Récentes</h3>
             <button
-              onClick={() => setShowManualForm(!showManualForm)}
+              onClick={() => setLogging({})}
               className="flex items-center gap-1 text-xs bg-primary-600/20 border border-primary-400/50 text-primary-300 px-2.5 py-1.5 rounded-lg hover:bg-primary-600/30"
             >
               <Plus className="w-3.5 h-3.5" /> Ajouter
             </button>
           </div>
-
-          {showManualForm && (
-            <div className="bg-cyber-panel2 border border-cyber-line rounded-lg p-3 mb-4 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={manualType}
-                  onChange={(e) => setManualType(e.target.value as Discipline)}
-                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
-                >
-                  <option value="swim">🏊 Natation</option>
-                  <option value="bike">🚴 Vélo</option>
-                  <option value="run">🏃 Course</option>
-                  <option value="strength">💪 Force</option>
-                  <option value="walk">🚶 Marche</option>
-                  <option value="other">⚡ Autre</option>
-                </select>
-                <input
-                  type="date"
-                  value={manualDate}
-                  onChange={(e) => setManualDate(e.target.value)}
-                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  type="number"
-                  value={manualDuration}
-                  onChange={(e) => setManualDuration(e.target.value)}
-                  placeholder="Durée (min)"
-                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
-                />
-                <input
-                  type="number"
-                  value={manualDistance}
-                  onChange={(e) => setManualDistance(e.target.value)}
-                  placeholder="Distance (km)"
-                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
-                />
-                <input
-                  type="number"
-                  value={manualCalories}
-                  onChange={(e) => setManualCalories(e.target.value)}
-                  placeholder="Calories"
-                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="number"
-                  value={manualHr}
-                  onChange={(e) => setManualHr(e.target.value)}
-                  placeholder="BPM moyen"
-                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
-                />
-                <input
-                  type="text"
-                  value={manualNotes}
-                  onChange={(e) => setManualNotes(e.target.value)}
-                  placeholder="Notes (opt.)"
-                  className="px-2 py-1.5 border border-cyber-line rounded-lg text-sm"
-                />
-              </div>
-              <button
-                onClick={handleAddManual}
-                disabled={savingManual || !manualDuration}
-                className="w-full bg-primary-600/20 border border-primary-400/50 text-primary-300 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary-600/30 disabled:opacity-50"
-              >
-                {savingManual ? 'Enregistrement...' : 'Enregistrer'}
-              </button>
-            </div>
-          )}
 
           {workouts.length === 0 ? (
             <div className="text-slate-500 text-sm font-mono">Aucune activité — connecte Strava ou ajoute-en une manuellement</div>
@@ -406,25 +480,40 @@ export default function Dashboard({
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 .slice(0, 5)
                 .map((w) => (
-                  <button
+                  <div
                     key={w.id}
-                    onClick={() => setSelectedWorkout(w)}
-                    className="w-full text-left flex items-center justify-between bg-cyber-panel2 border border-cyber-line rounded-lg px-3 py-2 hover:border-primary-400/50 transition-colors"
+                    className="flex items-center gap-2 bg-cyber-panel2 border border-cyber-line rounded-lg px-3 py-2 hover:border-primary-400/50 transition-colors"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      onClick={() => setSelectedWorkout(w)}
+                      className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                    >
                       <span className="text-lg shrink-0">{ACTIVITY_ICON[w.type]}</span>
                       <div className="min-w-0">
-                        <div className="text-sm text-slate-200 truncate">{w.notes || w.type}</div>
+                        <div className="text-sm text-slate-200 truncate">{w.title || w.notes || w.type}</div>
                         <div className="text-xs text-slate-500 font-mono">
                           {new Date(w.date).toLocaleDateString('fr-FR')} · {w.distance ? `${w.distance}km · ` : ''}
                           {w.duration}min
+                          {w.exercises?.length ? ` · ${w.exercises.length} exos` : ''}
                           {w.elevationGain ? ` · ${w.elevationGain}m D+` : ''}
                           {w.avgWatts ? ` · ${w.avgWatts}W` : ''}
                         </div>
                       </div>
-                    </div>
+                    </button>
                     {w.source === 'strava' && <span className="text-xs text-orange-400 font-mono shrink-0">Strava</span>}
-                  </button>
+                    {w.source === 'health_connect' && (
+                      <span className="text-xs text-sport-strength font-mono shrink-0">Health</span>
+                    )}
+                    {isManualWorkout(w.id) && (
+                      <button
+                        onClick={() => setLogging({ workout: w })}
+                        title="Modifier cette activité"
+                        className="text-slate-600 hover:text-primary-300 shrink-0"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 ))}
             </div>
           )}
@@ -447,8 +536,33 @@ export default function Dashboard({
         </div>
       </div>
 
-      {showToday && todayPlan && <WorkoutDetail day={todayPlan} workouts={workouts} onClose={() => setShowToday(false)} />}
-      {selectedWorkout && <ActivityDetail workout={selectedWorkout} onClose={() => setSelectedWorkout(null)} />}
+      {showToday && todayPlan && (
+        <WorkoutDetail uid={uid} day={todayPlan} workouts={workouts} onClose={() => setShowToday(false)} />
+      )}
+      {selectedWorkout && (
+        <ActivityDetail
+          workout={selectedWorkout}
+          onEdit={
+            isManualWorkout(selectedWorkout.id)
+              ? () => {
+                  setLogging({ workout: selectedWorkout });
+                  setSelectedWorkout(null);
+                }
+              : undefined
+          }
+          onClose={() => setSelectedWorkout(null)}
+        />
+      )}
+      {logging && (
+        <LogWorkoutModal
+          uid={uid}
+          workout={logging.workout}
+          plannedSession={logging.session}
+          plannedWeekNumber={currentWeekNumber}
+          plannedDate={logging.session ? today : undefined}
+          onClose={() => setLogging(null)}
+        />
+      )}
     </div>
   );
 }

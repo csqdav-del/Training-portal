@@ -1,12 +1,15 @@
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Target, Heart, Ruler, Clock } from 'lucide-react';
+import { X, Target, Heart, Ruler, Clock, Check, Repeat } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { DayPlan, PlanDiscipline, Workout } from '../types';
+import { DayPlan, PlanDiscipline, PlannedSession, Workout } from '../types';
 import { TRAINING_PLAN } from '../data/trainingPlan';
+import LogWorkoutModal from './LogWorkoutModal';
 
 interface WorkoutDetailProps {
+  uid: string;
   day: DayPlan;
   workouts: Workout[];
   onClose: () => void;
@@ -26,13 +29,25 @@ const progressionData = TRAINING_PLAN.map((w) => ({
   Course: w.volumeSummary.runKm,
 }));
 
-export default function WorkoutDetail({ day, workouts, onClose }: WorkoutDetailProps) {
+export default function WorkoutDetail({ uid, day, workouts, onClose }: WorkoutDetailProps) {
+  // Séance en cours de saisie manuelle (bouton « J'ai fait ça »).
+  const [logging, setLogging] = useState<PlannedSession | null>(null);
   const currentWeekNumber = TRAINING_PLAN.find((w) => day.date >= w.startDate && day.date <= w.endDate)?.weekNumber ?? 1;
 
-  const findActual = (discipline: PlanDiscipline) =>
-    workouts.find((w) => w.type === discipline && new Date(w.date).toDateString() === day.date.toDateString());
+  /**
+   * L'activité réalisée pour une séance : d'abord celle qui pointe explicitement
+   * vers elle (saisie manuelle), sinon une activité du même sport le même jour.
+   * Le lien explicite compte même si la discipline diffère — c'est le cas quand
+   * la natation a été troquée contre de la muscu.
+   */
+  const findActual = (session: PlannedSession) =>
+    workouts.find((w) => w.plannedSessionId === session.id) ??
+    workouts.find(
+      (w) => w.type === session.discipline && new Date(w.date).toDateString() === day.date.toDateString(),
+    );
 
   return createPortal(
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
         className="glass-panel w-full max-w-3xl max-h-[90vh] flex flex-col shadow-neon-cyan"
@@ -57,7 +72,7 @@ export default function WorkoutDetail({ day, workouts, onClose }: WorkoutDetailP
           <div className="space-y-4 mb-8">
             {day.sessions.map((session, idx) => {
               const meta = DISCIPLINE_META[session.discipline];
-              const actual = findActual(session.discipline);
+              const actual = findActual(session);
               return (
                 <div key={idx} className={`bg-cyber-panel2 border rounded-lg p-4 ${meta.glow}`}>
                   <div className="flex items-center justify-between gap-2 mb-3">
@@ -65,10 +80,26 @@ export default function WorkoutDetail({ day, workouts, onClose }: WorkoutDetailP
                       <span className="text-2xl">{meta.icon}</span>
                       <h3 className={`text-lg font-bold ${meta.color}`}>{session.title}</h3>
                     </div>
-                    {actual && (
+                    {actual ? (
                       <span className="text-xs bg-sport-bike/15 text-sport-bike border border-sport-bike/40 rounded-full px-2 py-1 font-mono shrink-0">
                         ✓ Réalisé
                       </span>
+                    ) : (
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => setLogging(session)}
+                          className="flex items-center gap-1 text-xs bg-primary-600/20 border border-primary-400/50 text-primary-300 px-2.5 py-1.5 rounded-lg hover:bg-primary-600/30"
+                        >
+                          <Check className="w-3.5 h-3.5" /> J’ai fait ça
+                        </button>
+                        <button
+                          onClick={() => setLogging(session)}
+                          title="Logger un autre sport à la place (piscine fermée, blessure…)"
+                          className="flex items-center gap-1 text-xs border border-cyber-line text-slate-400 px-2.5 py-1.5 rounded-lg hover:text-amber-300 hover:border-amber-400/50"
+                        >
+                          <Repeat className="w-3.5 h-3.5" /> Remplacer
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -113,7 +144,10 @@ export default function WorkoutDetail({ day, workouts, onClose }: WorkoutDetailP
 
                   {actual && (
                     <div className="mt-4 pt-4 border-t border-cyber-line">
-                      <div className="text-xs text-sport-bike uppercase tracking-wide mb-2 font-mono">Réel (Strava)</div>
+                      <div className="text-xs text-sport-bike uppercase tracking-wide mb-2 font-mono">
+                        Réel ({actual.source === 'strava' ? 'Strava' : actual.source === 'manual' ? 'saisie manuelle' : 'Health Connect'})
+                        {actual.type !== session.discipline && ` · remplacée par ${actual.type}`}
+                      </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div className="text-sm font-mono text-slate-300">
                           <span className="text-slate-500">Distance: </span>
@@ -156,6 +190,17 @@ export default function WorkoutDetail({ day, workouts, onClose }: WorkoutDetailP
                           </div>
                         )}
                       </div>
+                      {actual.exercises && actual.exercises.length > 0 && (
+                        <ul className="mt-3 space-y-0.5">
+                          {actual.exercises.map((ex, i) => (
+                            <li key={i} className="text-xs font-mono text-slate-400">
+                              <span className="text-sport-strength">▸</span> {ex.name}
+                              {ex.sets && ex.reps ? ` — ${ex.sets}×${ex.reps}` : ''}
+                              {ex.weightLbs ? ` @ ${ex.weightLbs} lbs` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {actual.notes && <div className="text-xs text-slate-500 mt-2 italic">"{actual.notes}"</div>}
                       {actual.stravaUrl && (
                         <a
@@ -196,7 +241,20 @@ export default function WorkoutDetail({ day, workouts, onClose }: WorkoutDetailP
         </div>
         </div>
       </div>
-    </div>,
+    </div>
+
+    {/* Hors de l'overlay : sinon le clic dans le formulaire remonterait
+        jusqu'au onClick de l'overlay (le portal reste dans l'arbre React). */}
+    {logging && (
+      <LogWorkoutModal
+        uid={uid}
+        plannedSession={logging}
+        plannedWeekNumber={currentWeekNumber}
+        plannedDate={day.date}
+        onClose={() => setLogging(null)}
+      />
+    )}
+    </>,
     document.body,
   );
 }

@@ -63,8 +63,16 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
     Object.keys(overrides.edits).length > 0 ||
     Object.keys(overrides.extras).length > 0;
 
-  const hasLoggedWorkout = (date: Date, discipline: Discipline) =>
-    workouts.some((w) => w.type === discipline && new Date(w.date).toDateString() === date.toDateString());
+  /**
+   * Une séance est cochée si une activité pointe explicitement vers elle (saisie
+   * manuelle) ou si un entraînement du même sport a été enregistré ce jour-là.
+   */
+  const hasLoggedWorkout = (date: Date, session: PlannedSession) =>
+    workouts.some(
+      (w) =>
+        w.plannedSessionId === session.id ||
+        (w.type === session.discipline && new Date(w.date).toDateString() === date.toDateString()),
+    );
 
   const handleDrop = (dayIndex: number) => {
     if (draggingId) moveSession(uid, week.weekNumber, draggingId, dayIndex);
@@ -157,6 +165,9 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
                 ) : (
                   day.sessions.map((session) => {
                     const isSkipped = Boolean(overrides.edits[session.id]?.skipped);
+                    // Séance troquée contre un autre sport : on la barre mais on
+                    // affiche le sport réellement pratiqué pour garder la trace.
+                    const replacedBy = overrides.edits[session.id]?.replacedBy;
                     const isCustom =
                       Boolean(overrides.extras[session.id]) ||
                       Object.keys(overrides.edits[session.id] ?? {}).some((k) => k !== 'skipped');
@@ -175,8 +186,8 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
                         onClick={() => setSelectedDay(day)}
                         className={`text-xs px-2 py-1.5 rounded border cursor-grab active:cursor-grabbing ${DISCIPLINE_STYLE[session.discipline]} flex items-center justify-between gap-1 ${
                           draggingId === session.id ? 'opacity-40' : ''
-                        } ${isSkipped ? 'opacity-40 line-through' : ''}`}
-                        title={session.title}
+                        } ${isSkipped || replacedBy ? 'opacity-40 line-through' : ''}`}
+                        title={replacedBy ? `${session.title} — remplacée` : session.title}
                       >
                         <span className="truncate">
                           {DISCIPLINE_ICON[session.discipline]}{' '}
@@ -184,7 +195,12 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
                           {isCustom && <span className="text-[10px] ml-1 opacity-70">•</span>}
                         </span>
                         <span className="flex items-center gap-1 shrink-0">
-                          {hasLoggedWorkout(day.date, session.discipline) && !isSkipped && (
+                          {replacedBy && (
+                            <span className="no-underline" title={`Remplacée par : ${replacedBy}`}>
+                              → {DISCIPLINE_ICON[replacedBy]}
+                            </span>
+                          )}
+                          {hasLoggedWorkout(day.date, session) && !isSkipped && !replacedBy && (
                             <CheckCircle2 className="w-3.5 h-3.5 text-sport-bike" />
                           )}
                           <button
@@ -235,7 +251,9 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
         </div>
       </div>
 
-      {selectedDay && <WorkoutDetail day={selectedDay} workouts={workouts} onClose={() => setSelectedDay(null)} />}
+      {selectedDay && (
+        <WorkoutDetail uid={uid} day={selectedDay} workouts={workouts} onClose={() => setSelectedDay(null)} />
+      )}
 
       {editing && (
         <SessionEditor

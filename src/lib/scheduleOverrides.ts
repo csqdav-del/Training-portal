@@ -1,6 +1,6 @@
 import { deleteField, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { DayPlan, PlanDiscipline, PlannedSession, ZoneKey } from '../types';
+import { DayPlan, Discipline, PlanDiscipline, PlannedSession, ZoneKey } from '../types';
 import { HR_ZONES } from '../data/trainingPlan';
 
 /** Modifications persistées d'une séance du plan (les champs absents gardent la valeur du plan). */
@@ -11,6 +11,12 @@ export interface SessionEdit {
   targetDurationMin?: number;
   notes?: string;
   skipped?: boolean;
+  /**
+   * Discipline réellement pratiquée à la place de celle du plan (piscine fermée,
+   * blessure...). La séance reste visible au calendrier, barrée, avec l'icône du
+   * sport de remplacement — contrairement à `skipped` qui la fait disparaître.
+   */
+  replacedBy?: Discipline;
 }
 
 /** Séance ajoutée manuellement, qui n'existe pas dans le plan de base. */
@@ -89,6 +95,26 @@ export async function setSessionSkipped(uid: string, weekNumber: number, session
   await setDoc(
     weekRef(uid, weekNumber),
     { edits: { [sessionId]: { skipped } }, updatedAt: Date.now() },
+    { merge: true },
+  );
+}
+
+/**
+ * Note qu'une séance planifiée a été troquée contre un autre sport. Appelé quand
+ * David logge une activité en cochant « remplace la séance du jour ».
+ */
+export async function setSessionReplaced(
+  uid: string,
+  weekNumber: number,
+  sessionId: string,
+  replacedBy: Discipline | null,
+) {
+  await setDoc(
+    weekRef(uid, weekNumber),
+    {
+      edits: { [sessionId]: { replacedBy: replacedBy ?? deleteField() } },
+      updatedAt: Date.now(),
+    },
     { merge: true },
   );
 }

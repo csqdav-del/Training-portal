@@ -14,6 +14,9 @@ import { applyWeekOverrides, parseOverrides } from '../../src/lib/planOverrides'
 import type { WeekPlanOverrides } from '../../src/lib/planOverrides';
 import { parseFirestoreDate } from '../../src/lib/firestoreDate';
 import { formatDuration, formatPace } from '../../src/lib/format';
+import { describeCode, forecastUrl, normalizeForecast } from '../../src/lib/weather';
+import type { WeatherForecast } from '../../src/lib/weather';
+import { SUITABILITY_LABELS, formatWindow, rateDay } from '../../src/lib/weatherSuitability';
 import type { Discipline } from '../../src/types';
 
 /**
@@ -37,6 +40,8 @@ const WEIGHT_WINDOW_DAYS = 90;
 const NUTRITION_WINDOW_DAYS = 30;
 const VAPING_WINDOW_DAYS = 30;
 const RECOVERY_WINDOW_DAYS = 60;
+/** Au-dela, on se passe de la meteo plutot que de faire attendre le coach. */
+const WEATHER_TIMEOUT_MS = 5000;
 /** Semaines du plan exposées autour de la semaine courante — l'IA ne propose que là-dedans. */
 const WEEK_RADIUS = 2;
 
@@ -219,6 +224,27 @@ async function readRecovery(uid: string): Promise<RecoveryDay[]> {
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
+/**
+ * Prevision de Quebec (Open-Meteo, sans cle d'API). Renvoie `null` sur erreur ou
+ * timeout : le coach fonctionne sans meteo depuis toujours, une API tierce en
+ * panne ne doit pas faire echouer tout le contexte.
+ */
+async function readWeather(): Promise<WeatherForecast | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WEATHER_TIMEOUT_MS);
+    try {
+      const res = await fetch(forecastUrl(), { signal: controller.signal });
+      if (!res.ok) return null;
+      return normalizeForecast(await res.json());
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return null;
+  }
+}
+
 // --- Rendu Markdown --------------------------------------------------------
 
 function renderWorkouts(workouts: RawWorkout[]): string {
@@ -320,6 +346,36 @@ function renderPlanWeek(weekNumber: number, overrides: WeekPlanOverrides): strin
   return lines.join('\n');
 }
 
+/**
+ * Un jour par ligne, avec le verdict velo/course calcule par le meme module que
+ * l'interface — le coach et le tableau de bord disent donc la meme chose.
+ */
+function renderWeather(forecast: WeatherForecast): string {
+  const rows = forecast.days.map((day) => {
+    const bike = rateDay('bike', day);
+    const run = rateDay('run', day);
+    // Le creneau n'est mentionne que s'il est vraiment meilleur que le reste du
+    // jour : sinon le modele conseillerait une heure qui ne change rien.
+    const verdict = (v: typeof bike, sport: string) => {
+      if (!v) return null;
+      const when = v.limitedWindow && v.window ? ` (seulement ${formatWindow(v.window)})` : '';
+      return `${sport} ${SUITABILITY_LABELS[v.level]}${when}`;
+    };
+    const verdicts = [verdict(bike, 'velo'), verdict(run, 'course')].filter(Boolean).join(' / ');
+    return `| ${dayKey(day.date)} | ${describeCode(day.code).label} | ${round(day.feelsLikeMinC)} a ${round(
+      day.feelsLikeMaxC,
+    )} | ${round(day.precipSumMm, 1)} mm (${round(day.precipProbMax)} %) | ${round(
+      day.windMaxKmh,
+    )} km/h | ${verdicts || '—'} |`;
+  });
+
+  return [
+    '| Jour | Conditions | Ressenti (C) | Precipitations | Vent max | Verdict exterieur |',
+    '|---|---|---|---|---|---|',
+    ...rows,
+  ].join('\n');
+}
+
 function renderWeights(weights: WeightPoint[]): string {
   if (weights.length === 0) return '_Aucune pesee sur la periode._';
   const first = weights[0];
@@ -395,13 +451,14 @@ export async function buildCoachContext(uid: string): Promise<CoachContext> {
     if (w >= 1 && w <= TOTAL_WEEKS) weeks.push(w);
   }
 
-  const [workouts, overridesByWeek, weights, nutrition, vaping, recovery] = await Promise.all([
+  const [workouts, overridesByWeek, weights, nutrition, vaping, recovery, weather] = await Promise.all([
     readWorkouts(uid),
     readOverrides(uid, weeks),
     readWeights(uid),
     readNutrition(uid),
     readVaping(uid),
     INCLUDE_RECOVERY ? readRecovery(uid) : Promise.resolve([] as RecoveryDay[]),
+    readWeather(),
   ]);
 
   const zones = Object.entries(HR_ZONES)
@@ -421,6 +478,15 @@ export async function buildCoachContext(uid: string): Promise<CoachContext> {
     `## Plan des semaines ${weeks[0]} a ${weeks[weeks.length - 1]} (personnalisations comprises)`,
     weeks.map((w) => renderPlanWeek(w, overridesByWeek[w])).join('\n\n'),
     '',
+    // Placee juste apres le plan : le modele lit les seances et leur meteo a la suite.
+    ...(weather
+      ? [
+          '## Meteo Quebec (7 prochains jours)',
+          renderWeather(weather),
+          '_Indicatif : la prevision ne va pas plus loin que 7 jours, et le plan ne se modifie jamais tout seul._',
+          '',
+        ]
+      : []),
     `## Entrainements logges (${WORKOUT_WINDOW_DAYS} derniers jours)`,
     renderWorkouts(workouts),
     '',

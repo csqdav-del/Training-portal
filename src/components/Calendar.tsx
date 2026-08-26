@@ -27,6 +27,10 @@ import {
 } from '../lib/scheduleOverrides';
 import WorkoutDetail from './WorkoutDetail';
 import SessionEditor from './SessionEditor';
+import WeatherBadge from './WeatherBadge';
+import { findDay, describeCode } from '../lib/weather';
+import { useWeather } from '../lib/useWeather';
+import { rateSession } from '../lib/weatherSuitability';
 
 interface CalendarProps {
   workouts: Workout[];
@@ -81,6 +85,8 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
   const [editing, setEditing] = useState<{ dayIndex: number; session: PlannedSession | null } | null>(null);
   const [view, setView] = useState<CalendarView>('week');
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
+  // La prévision ne couvre que 7 jours : les semaines plus lointaines n'affichent rien.
+  const { forecast } = useWeather();
 
   const week = TRAINING_PLAN[weekIndex];
 
@@ -234,6 +240,7 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
         {effectiveDays.map((day) => {
           const isToday = day.date.toDateString() === new Date().toDateString();
           const isDragOver = dragOverDay === day.dayIndex;
+          const weatherDay = findDay(forecast, day.date);
           return (
             <div
               key={day.dayIndex}
@@ -263,6 +270,28 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
                 {format(day.date, 'd MMM', { locale: fr })}
               </div>
 
+              {weatherDay && (
+                <div
+                  className="text-[11px] font-mono text-slate-500 mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5"
+                  title={`${describeCode(weatherDay.code).label} · ressenti ${Math.round(
+                    weatherDay.feelsLikeMinC,
+                  )} à ${Math.round(weatherDay.feelsLikeMaxC)} °C · vent max ${Math.round(
+                    weatherDay.windMaxKmh,
+                  )} km/h · ${weatherDay.precipSumMm.toFixed(1)} mm (${Math.round(weatherDay.precipProbMax)} %)`}
+                >
+                  <span>{describeCode(weatherDay.code).icon}</span>
+                  <span className="text-slate-400">{Math.round(weatherDay.tempMaxC)}°</span>
+                  <span className="text-slate-600">{Math.round(weatherDay.tempMinC)}°</span>
+                  <span className="text-slate-600">{Math.round(weatherDay.windMaxKmh)} km/h</span>
+                  {/* La pluie décide d'une sortie : elle doit se lire sans survoler. */}
+                  {weatherDay.precipSumMm >= 0.2 ? (
+                    <span className="text-sport-swim">{weatherDay.precipSumMm.toFixed(1)} mm</span>
+                  ) : weatherDay.precipProbMax >= 40 ? (
+                    <span className="text-slate-600">{Math.round(weatherDay.precipProbMax)} %</span>
+                  ) : null}
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 {day.sessions.length === 0 ? (
                   <div className="text-xs text-slate-600">Repos</div>
@@ -275,6 +304,11 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
                     const isCustom =
                       Boolean(overrides.extras[session.id]) ||
                       Object.keys(overrides.edits[session.id] ?? {}).some((k) => k !== 'skipped');
+                    // Pastille météo : seulement pour une séance extérieure encore d'actualité.
+                    const weather =
+                      isSkipped || replacedBy
+                        ? null
+                        : rateSession(session.discipline, weatherDay, session.targetDurationMin);
                     return (
                       <div
                         key={session.id}
@@ -299,6 +333,7 @@ export default function Calendar({ workouts, uid }: CalendarProps) {
                           {isCustom && <span className="text-[10px] ml-1 opacity-70">•</span>}
                         </span>
                         <span className="flex items-center gap-1 shrink-0">
+                          {weather && <WeatherBadge verdict={weather} variant="dot" />}
                           {replacedBy && (
                             <span className="no-underline" title={`Remplacée par : ${replacedBy}`}>
                               → {DISCIPLINE_ICON[replacedBy]}

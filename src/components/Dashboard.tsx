@@ -32,6 +32,11 @@ import {
   EMPTY_OVERRIDES,
   WeekPlanOverrides,
 } from '../lib/scheduleOverrides';
+import WeatherPanel from './WeatherPanel';
+import WeatherBadge from './WeatherBadge';
+import { findDay } from '../lib/weather';
+import { useWeather } from '../lib/useWeather';
+import { rateSession } from '../lib/weatherSuitability';
 
 interface DashboardProps {
   uid: string;
@@ -114,6 +119,7 @@ export default function Dashboard({
   const [period, setPeriod] = useState<'week' | 'all'>('week');
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [weekOverrides, setWeekOverrides] = useState<WeekPlanOverrides>(EMPTY_OVERRIDES);
+  const { forecast, loading: weatherLoading, error: weatherError, refresh: refreshWeather } = useWeather();
 
   const currentWeekNumber = getWeekForDate(new Date())?.weekNumber;
 
@@ -360,6 +366,15 @@ export default function Dashboard({
         </div>
       )}
 
+      {/* Météo — se lit juste avant la séance qu'elle concerne */}
+      <WeatherPanel
+        forecast={forecast}
+        loading={weatherLoading}
+        error={weatherError}
+        onRefresh={refreshWeather}
+        planDays={plannedDays}
+      />
+
       {/* Entraînement du jour — chaque séance se logge en un clic */}
       <div className="glass-panel p-5">
         <button
@@ -378,6 +393,8 @@ export default function Dashboard({
             {todayPlan.sessions.map((s) => {
               const meta = DISCIPLINE_META[s.discipline];
               const done = isSessionDone(s);
+              // Natation et muscu se font à l'intérieur : `rateSession` renvoie null.
+              const weather = rateSession(s.discipline, findDay(forecast, today), s.targetDurationMin);
               return (
                 <div
                   key={s.id}
@@ -400,6 +417,7 @@ export default function Dashboard({
                         </>
                       )}
                     </div>
+                    {weather && !done && <WeatherBadge verdict={weather} />}
                   </div>
                   {done ? (
                     <span className="flex items-center gap-1 text-xs text-sport-bike font-mono shrink-0">
